@@ -29,10 +29,10 @@ export function TripOdometer({ dispatchId, userId, kind, onReady }: { dispatchId
 
   const save = async () => {
     const km = Number(value.replace(',', '.'))
-    if (!file || !(km > 0)) { setError('Ingrese el odómetro y tome la foto del tablero'); return }
+    if (!(km > 0)) { setError('Ingrese el odómetro que marca el tablero'); return }
     setBusy(true); setError('')
     try {
-      const photo = await asBase64(await compressPhoto(file))
+      const photo = file ? await asBase64(await compressPhoto(file)) : null  // la foto es opcional (cámara averiada)
       const id = crypto.randomUUID()
       saveOfflineAction('dispatch_odometer', { dispatch_id: dispatchId, user_id: userId, kind, value: km, photo_base64: photo, at: new Date().toISOString() }, id)
       if (navigator.onLine) await syncOfflineActions().catch(() => {})
@@ -57,11 +57,11 @@ export function TripOdometer({ dispatchId, userId, kind, onReady }: { dispatchId
     {recorded != null ? <p className="mt-1 text-emerald-700">Registrado: {recorded.toLocaleString('es-PE')} km{kind === 'LLEGADA' && state.km != null ? ` · viaje ${state.km.toLocaleString('es-PE')} km` : ''}</p>
       : pending ? <p className="mt-1 text-amber-800">Lectura guardada en el teléfono; se enviará al haber señal.{pending.last_error ? ` Último intento: ${pending.last_error}` : ''}</p>
       : <div className="mt-2 space-y-2">
-          <p className="text-xs text-slate-600">Obligatorio: el número que marca el tablero y una foto donde se lea.</p>
+          <p className="text-xs text-slate-600">Obligatorio: el número que marca el tablero. La foto es opcional, pero ayuda si hay dudas.</p>
           <input inputMode="decimal" placeholder="Ej.: 125430" aria-label="Odómetro (km)" value={value} onChange={e => setValue(e.target.value.replace(/[^0-9.,]/g, ''))} className="min-h-11 w-full rounded-lg border border-slate-300 px-3" />
-          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3"><Camera className="h-4 w-4" aria-hidden />{file ? 'Foto lista · cambiar' : 'Foto del tablero'}
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3"><Camera className="h-4 w-4" aria-hidden />{file ? 'Foto lista · cambiar' : 'Foto del tablero (opcional)'}
             <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="sr-only" onChange={e => { setFile(e.target.files?.[0] || null); e.target.value = '' }} /></label>
-          <button type="button" disabled={busy || !file || !value} onClick={() => void save()} className="min-h-11 w-full rounded-lg bg-[#002855] px-3 font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Registrar odómetro'}</button>
+          <button type="button" disabled={busy || !value} onClick={() => void save()} className="min-h-11 w-full rounded-lg bg-[#002855] px-3 font-semibold text-white disabled:opacity-50">{busy ? 'Guardando…' : 'Registrar odómetro'}</button>
         </div>}
     {error && <p role="alert" className="mt-2 text-red-700">{error}</p>}
   </div>

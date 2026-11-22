@@ -1,4 +1,4 @@
--- C233: km del viaje por odómetro con foto (salida y llegada obligatorias en sesiones de usuario), GPS como control con
+-- C233: km del viaje por odómetro (salida y llegada obligatorias en sesiones de usuario; foto opcional y validada si llega), GPS como control con
 -- marca de observado, fuente del km registrada; factura de flete de terceros con IGV y moneda aparte. Siempre se revierte.
 BEGIN;
 -- Cambio de estado en una sesión de usuario de oficina (no el conductor): el preuso del día no es objeto de esta prueba
@@ -29,7 +29,7 @@ BEGIN
   BEGIN PERFORM pg_temp.c233_set(did, 'EN RUTA'); ok := true; EXCEPTION WHEN OTHERS THEN ok := false; msg := SQLERRM; END;
   IF ok OR msg NOT ILIKE '%odómetro de salida%' THEN RAISE EXCEPTION 'CAJA C233 FAIL: inició la ruta sin odómetro de salida (%)', msg; END IF;
   BEGIN PERFORM public.dispatch_record_odometer(did, 'SALIDA', 1000, drv.profile_id || '/c233/no-existe.jpg'); ok := true; EXCEPTION WHEN OTHERS THEN ok := false; END;
-  IF ok THEN RAISE EXCEPTION 'CAJA C233 FAIL: aceptó el odómetro sin foto'; END IF;
+  IF ok THEN RAISE EXCEPTION 'CAJA C233 FAIL: aceptó una foto que no existe'; END IF;
   PERFORM public.dispatch_record_odometer(did, 'SALIDA', 1000, ph1);
   PERFORM pg_temp.c233_set(did, 'EN RUTA');
   PERFORM pg_temp.c233_set(did, NULL, 80, 900);  -- inicio de ruta con la lectura del preuso + GPS acumulado
@@ -39,7 +39,7 @@ BEGIN
   IF ok OR msg NOT ILIKE '%odómetro de llegada%' THEN RAISE EXCEPTION 'CAJA C233 FAIL: confirmó la llegada sin odómetro (%)', msg; END IF;
   BEGIN PERFORM public.dispatch_record_odometer(did, 'LLEGADA', 999, ph2); ok := true; EXCEPTION WHEN OTHERS THEN ok := false; END;
   IF ok THEN RAISE EXCEPTION 'CAJA C233 FAIL: aceptó una llegada menor a la salida'; END IF;
-  PERFORM public.dispatch_record_odometer(did, 'LLEGADA', 1100, ph2);
+  PERFORM public.dispatch_record_odometer(did, 'LLEGADA', 1100, NULL);  -- sin foto (cámara averiada)
   SELECT * INTO d FROM public.dispatches WHERE id = did;
   IF d.actual_distance_km <> 100 OR d.actual_distance_source <> 'ODOMETRO' OR d.gps_distance_km <> 80 OR d.km_check <> 'OBSERVADO' THEN
     RAISE EXCEPTION 'CAJA C233 FAIL: km % fuente % gps % control %', d.actual_distance_km, d.actual_distance_source, d.gps_distance_km, d.km_check; END IF;
@@ -51,13 +51,13 @@ BEGIN
   -- Factura de flete de tercero: base, IGV y moneda aparte; base en soles con el tipo de cambio
   PERFORM set_config('role', 'postgres', true);
   SELECT x.id, x.site_id INTO t FROM public.dispatches x WHERE x.modalidad = 'TERCERO' ORDER BY x.created_at DESC LIMIT 1;
-  IF t.id IS NULL THEN RAISE EXCEPTION 'CAJA C233 PASS: odómetro con foto y GPS de control (sin viajes de terceros para la factura)'; END IF;
+  IF t.id IS NULL THEN RAISE EXCEPTION 'CAJA C233 PASS: odómetro obligatorio y GPS de control (sin viajes de terceros para la factura)'; END IF;
   FOR p IN SELECT pr.id FROM public.profiles pr WHERE pr.is_active LOOP
     PERFORM set_config('request.jwt.claim.sub', p.id::text, true);
     PERFORM set_config('request.jwt.claims', json_build_object('sub', p.id, 'role', 'authenticated')::text, true);
     IF public.has_tms_permission('despacho') AND public.can_access_site(t.site_id) THEN m := p.id; EXIT; END IF;
   END LOOP;
-  IF m IS NULL THEN RAISE EXCEPTION 'CAJA C233 PASS: odómetro con foto y GPS de control (sin usuario de despacho para la factura)'; END IF;
+  IF m IS NULL THEN RAISE EXCEPTION 'CAJA C233 PASS: odómetro obligatorio y GPS de control (sin usuario de despacho para la factura)'; END IF;
   r := public.dispatch_freight_invoice_save(t.id, '{"provider_ruc":"20999999991","document_series":"F001","document_number":"000123","issue_date":"2026-11-01","currency":"USD","base_amount":100,"igv_amount":18,"exchange_rate":3.75}');
   IF (SELECT base_pen FROM public.dispatch_freight_invoices WHERE id = (r->>'id')::bigint) <> 375
      OR (SELECT total_amount FROM public.dispatch_freight_invoices WHERE id = (r->>'id')::bigint) <> 118 THEN RAISE EXCEPTION 'CAJA C233 FAIL: base en soles o total de la factura'; END IF;
@@ -77,6 +77,6 @@ BEGIN
   PERFORM public.dispatch_freight_invoice_save(t.id, '{"provider_ruc":"20999999991","document_series":"F001","document_number":"000123","issue_date":"2026-11-01","currency":"USD","base_amount":110,"igv_amount":19.8,"exchange_rate":3.75}');
   IF (SELECT count(*) FROM public.dispatch_freight_invoices WHERE dispatch_id = t.id AND provider_ruc = '20999999991' AND voided_at IS NULL) <> 1 THEN
     RAISE EXCEPTION 'CAJA C233 FAIL: la factura anulada sigue vigente o no se pudo registrar corregida'; END IF;
-  RAISE EXCEPTION 'CAJA C233 PASS: odómetro con foto obligatorio al salir y volver, km por odómetro con GPS de control y factura de flete con IGV y moneda aparte (anulación con motivo)';
+  RAISE EXCEPTION 'CAJA C233 PASS: odómetro obligatorio al salir y volver (foto opcional), km por odómetro con GPS de control y factura de flete con IGV y moneda aparte (anulación con motivo)';
 END $test$;
 ROLLBACK;
