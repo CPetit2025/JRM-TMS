@@ -26,6 +26,7 @@ export type OfflineAction = {
   retry_count: number
   status: 'pending' | 'error'
   last_error?: string
+  last_code?: string
 }
 
 export function readRouteQueue(): RoutePoint[] {
@@ -58,6 +59,8 @@ export function saveOfflineAction(type: string, payload: Record<string, unknown>
 
 // P0001: regla del servidor (orden, ruta cerrada, plazo); 42501: RLS; 23505/23502/23514/22P02: datos inválidos o repetidos
 const PERMANENT_POINT_CODES = new Set(['P0001', '42501', '23505', '23502', '23514', '22P02'])
+// Rechazo definitivo del servidor (regla o dato inválido): reintentar no sirve; un error de red sí se reintenta
+export const isPermanentSyncError = (a: OfflineAction) => a.status === 'error' && PERMANENT_POINT_CODES.has(a.last_code || '')
 function permanentPointError(error: { code?: string; message?: string }) {
   return PERMANENT_POINT_CODES.has(error.code || '') || /deben llegar en orden|sin conductor activo|fuera de rango|no autorizado|row-level security/i.test(error.message || '')
 }
@@ -247,6 +250,19 @@ export function syncOfflineActions(): Promise<number> {
           const { error } = await supabase.rpc('route_stop_wait', { p_id: p.wait_id, p_dispatch: p.dispatch_id, p_request: p.request_id,
             p_reason: p.reason ?? null, p_note: p.note ?? null, p_started_at: p.started_at, p_ended_at: p.ended_at ?? null })
           if (error) throw error
+        } else if (action.type === 'dispatch_odometer') {
+          // Odómetro de salida o llegada del viaje: sube la foto del tablero y registra la lectura
+          const { data: auth } = await supabase.auth.getUser()
+          if (!auth.user || auth.user.id !== action.payload.user_id) throw new Error('La sesión no corresponde a esta lectura')
+          const kind = photoKind(action.payload.photo_base64)
+          if (!kind) throw new Error('Foto del odómetro no válida: use JPG, PNG o WEBP')
+          const path = `${auth.user.id}/${action.payload.dispatch_id}/odometro/${action.id}.${kind.ext}`
+          const blob = await (await fetch(String(action.payload.photo_base64))).blob()
+          const { error: upError } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: kind.type })
+          if (upError && String(upError.statusCode) !== '409') throw upError
+          const { error } = await supabase.rpc('dispatch_record_odometer', { p_dispatch: action.payload.dispatch_id, p_kind: action.payload.kind,
+            p_value: action.payload.value, p_photo: path, p_at: action.payload.at })
+          if (error) throw error
         } else if (action.type === 'delivery_depart') {
           const p = action.payload
           const { error } = await supabase.rpc('delivery_depart_at', { p_dispatch: p.dispatch_id, p_request: p.request_id, p_at: p.at })
@@ -271,6 +287,7 @@ export function syncOfflineActions(): Promise<number> {
         if (target) {
           target.retry_count++
           target.status = 'error'
+          target.last_code = err && typeof err === 'object' && 'code' in err ? String(err.code) : undefined
           target.last_error = err && typeof err === 'object' && 'message' in err ? String(err.message).slice(0, 300) : 'Error de sincronización'
           localStorage.setItem(actionQueueKey, JSON.stringify(currentQueue))
         }

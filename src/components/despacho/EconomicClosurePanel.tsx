@@ -12,6 +12,7 @@ import {
   type EconItem, type EconRoute, type EconSettings, type EconState,
 } from '@/lib/economic-closure'
 import { DispatchFreightStages } from '@/components/despacho/DispatchFreightStages'
+import { FreightInvoices } from '@/components/despacho/FreightInvoices'
 import { BILLING_LABEL, CONCEPT_LABEL } from '@/components/despacho/InheritedSpecialServices'
 
 // Detalle del cierre económico de una ruta en panel lateral: cabecera, estado documentario y económico, pestañas
@@ -381,7 +382,7 @@ export function EconomicClosurePanel({ dispatchId, initialTab = 'resumen', onClo
               {editing && (() => {
                 const item = data.items.find(i => i.key === editing)
                 if (!item) return null
-                if (item.kind === 'FLETE') return <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><DispatchFreightStages key={reload} dispatchId={dispatchId} settings={settings} onSaved={() => void confirm(false)} /></section>
+                if (item.kind === 'FLETE') return <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><DispatchFreightStages key={reload} dispatchId={dispatchId} settings={settings} onSaved={() => void confirm(false)} /><FreightInvoices dispatchId={dispatchId} /></section>
                 const s = item.id ? services.get(item.id) : undefined
                 return s ? <ServiceEditor key={`${s.id}-${s.final_validated_at || ''}`} s={s} settings={settings} onSaved={() => void confirm(false)} /> : null
               })()}
