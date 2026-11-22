@@ -49,6 +49,29 @@ const feed=(status={})=>[
  assert.equal((await sys(`SELECT status FROM public.wh_tasks WHERE transport_request_id='${REQ_CANCEL}'`))[0].status,'CANCELLED');
  console.log('PASS: sincronización TMS->WMS idempotente, con estado de solicitudes conocidas y cancelación.');
 
+ // 1b. Incidente 17-11: al editar, el TMS recrea los componentes con id nuevo; la sincronización no debe detenerse
+ const C1='00000000-0000-0000-0000-00000000e001',C2='00000000-0000-0000-0000-00000000e002',C3='00000000-0000-0000-0000-00000000e003';
+ const ctr=(id,code)=>({id,code,type:'CONTRATO',client_id:CL});
+ const withComps=(comps)=>{const f=feed({[REQ_CANCEL]:'CANCELADA'});f[0].components=comps;return f};
+ const comps=async()=>sys(`SELECT id,component_contract_id c,requested_weight_kg::float w FROM public.transport_request_components WHERE request_id='${REQ}' ORDER BY component_contract_id`);
+ await as('op1'); await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify(withComps([{id:C1,contract:ctr(OT,'16544'),requested_weight_kg:100}]))]);
+ assert.deepEqual(await comps(),[{id:C1,c:OT,w:100}]);
+ await as('op1'); let res=await one('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify(withComps([{id:C2,contract:ctr(OT,'16544'),requested_weight_kg:120},{id:C3,contract:ctr(OT2,'16497'),requested_weight_kg:50}]))]);
+ assert.deepEqual(res.errors,[],'componente recreado con otro id: no choca con la fila anterior');
+ assert.deepEqual(await comps(),[{id:C2,c:OT,w:120},{id:C3,c:OT2,w:50}],'toma el id nuevo y actualiza el peso');
+ await as('op1'); await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify(withComps([{id:C3,contract:ctr(OT,'16544'),requested_weight_kg:80}]))]);
+ assert.deepEqual(await comps(),[{id:C3,c:OT,w:80}],'retira el eliminado y admite un id que cambió de contrato');
+ // Duplicado en la fuente: solo esa solicitud queda fuera; las demás siguen sincronizando
+ const dup=withComps([{id:C1,contract:ctr(OT,'16544')},{id:C2,contract:ctr(OT,'16544')}]); dup[2].delivery_address='Callao';
+ await as('op1'); res=await one('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify(dup)]);
+ assert.equal(res.requests,2); assert.equal(res.errors.length,1); assert.equal(res.errors[0].request,'RT-000901');
+ assert.deepEqual(await comps(),[{id:C3,c:OT,w:80}],'la solicitud rechazada no cambia');
+ assert.equal((await sys(`SELECT delivery_address FROM public.transport_requests WHERE id='${REQ_PEND}'`))[0].delivery_address,'Callao','las demás solicitudes se aplican');
+ let state=(await sys('SELECT last_error,last_ok_at FROM public.wh_tms_sync_state'))[0]; assert.match(state.last_error,/RT-000901/); assert.ok(state.last_ok_at);
+ await as('op1'); await q('SELECT public.wh_tms_sync_apply($1,$2::jsonb)',[KEY,JSON.stringify(withComps([]))]);
+ assert.deepEqual(await comps(),[]); assert.equal((await sys('SELECT last_error FROM public.wh_tms_sync_state'))[0].last_error,null,'una corrida limpia borra el error');
+ console.log('PASS: componentes recreados con otro id, retirados y con cambio de contrato; duplicado en la fuente aísla solo su solicitud.');
+
  // 2. Toma de tarea: no válida / cancelada no se toma; dos operarios no toman la misma
  await as('op1');
  const tCancel=(await sys(`SELECT id FROM public.wh_tasks WHERE transport_request_id='${REQ_CANCEL}'`))[0].id;
