@@ -40,7 +40,9 @@ BEGIN
 
   -- Parada 1: espera por carga no preparada, documento faltante (reintento de la misma operación) y salida
   PERFORM set_config('role', 'postgres', true);
-  -- Llegadas y guías aprobadas por el Supervisor (la validación de guías tiene sus propias cajas)
+  -- Llegadas y guías aprobadas por el Supervisor (la validación de guías tiene sus propias cajas). OTIF usa la primera
+  -- llegada de la solicitud: las llegadas reales en otros viajes se quitan para que cuente la de este viaje.
+  UPDATE public.delivery_conformities SET arrived_at = NULL WHERE request_id IN (q1, q2) AND dispatch_id <> did;
   INSERT INTO public.delivery_conformities(dispatch_id, request_id, arrived_at, state) VALUES (did, q1, now() - interval '3 hours', 'VALIDADA'), (did, q2, now() - interval '90 minutes', 'VALIDADA')
   ON CONFLICT (dispatch_id, request_id) DO UPDATE SET arrived_at = EXCLUDED.arrived_at, departed_at = NULL, state = 'VALIDADA';
   PERFORM set_config('role', 'authenticated', true);
