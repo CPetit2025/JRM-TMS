@@ -115,7 +115,8 @@ BEGIN
     UPDATE public.dispatches SET end_odometer = v, end_odometer_photo = v_photo, end_odometer_at = v_at,
       liquidation_data = coalesce(liquidation_data, '{}'::jsonb) || jsonb_build_object('odometer_photo', v_photo) WHERE id = d.id;
   END IF;
-  BEGIN UPDATE public.vehicles SET current_odometer = v WHERE plate = d.vehicle_plate AND coalesce(current_odometer, 0) < v;
+  -- Lectura de la unidad para Mantenimiento por la vía validada (retroceso o salto quedan para auditoría)
+  BEGIN PERFORM public.asset_reading_apply(d.vehicle_plate, v, NULL, 'VIAJE_' || v_kind, v_photo, d.id, d.driver_id, NULL, auth.uid());
   EXCEPTION WHEN OTHERS THEN RAISE NOTICE 'Odómetro de % sin actualizar: %', d.vehicle_plate, SQLERRM; END;
   SELECT * INTO d FROM public.dispatches WHERE id = p_dispatch;
   RETURN jsonb_build_object('success', true, 'start_odometer', d.start_odometer, 'end_odometer', d.end_odometer,
