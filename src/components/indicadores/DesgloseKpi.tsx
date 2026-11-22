@@ -9,11 +9,16 @@ const sin = (f: Filtros, k: string) => Object.fromEntries(Object.entries(f).filt
 
 // Valor de un registro en una dimensión, como texto (solo dimensiones de categoría: texto o sí/no)
 const valorDim = (f: FilaDetalle, k: string) => { const v = f.dims?.[k]; return typeof v === 'boolean' ? (v ? 'sí' : 'no') : typeof v === 'string' && !/^\d{4}-\d{2}-\d{2}/.test(v) ? v : null }
-export const aplicarFiltros = (filas: FilaDetalle[], filtros: Filtros, salvo?: string) =>
-  filas.filter(f => Object.entries(filtros).every(([k, v]) => k === salvo || valorDim(f, k) === v))
+// Dimensión que solo traen las filas del numerador (p. ej. causa de una incidencia frente a los viajes del denominador)
+const soloNumerador = (filas: FilaDetalle[], k: string) => filas.some(f => valorDim(f, k) != null) && filas.every(f => valorDim(f, k) == null || Number(f.den || 0) === 0)
+/** Filtra por dimensión; en las del numerador conserva las filas del denominador (si no, todo quedaría «no calculable»). */
+export const aplicarFiltros = (filas: FilaDetalle[], filtros: Filtros, salvo?: string) => {
+  const activos = Object.entries(filtros).filter(([k]) => k !== salvo).map(([k, v]) => ({ k, v, num: soloNumerador(filas, k) }))
+  return filas.filter(f => activos.every(({ k, v, num }) => valorDim(f, k) === v || (num && valorDim(f, k) == null && Number(f.den || 0) > 0)))
+}
 
-/** Factor del indicador (100 para %): se deduce del propio resultado; si no hay datos, por la unidad. */
-const factorDe = (k: KpiResultado) => k.valor != null && k.num && k.den ? k.valor / (k.num / k.den) : k.unidad === '%' || k.unidad.startsWith('por 100') ? 100 : 1
+/** Factor del indicador (100 para %): el configurado; los cierres antiguos que no lo traen, por la unidad. */
+const factorDe = (k: KpiResultado) => k.factor ?? (k.unidad === '%' || k.unidad.startsWith('por 100') ? 100 : 1)
 
 /** Resultado de un subconjunto con las mismas reglas del tablero: sin registros, no calculable o valor con su cobertura. */
 export function resumen(filas: FilaDetalle[], kpi: KpiResultado) {
@@ -39,7 +44,7 @@ export function DesgloseKpi({ kpi, filas, filtros, onFiltros }: { kpi: KpiResult
     <div className="grid gap-3 sm:grid-cols-2">{claves.map(k => {
       const base = aplicarFiltros(filas, filtros, k)
       const grupos = [...new Set(base.map(f => valorDim(f, k)).filter((v): v is string => !!v))]
-        .map(v => ({ v, r: resumen(base.filter(f => valorDim(f, k) === v), kpi) })).sort((a, b) => b.r.n - a.r.n)
+        .map(v => ({ v, r: resumen(aplicarFiltros(base, { [k]: v }), kpi) })).sort((a, b) => b.r.n - a.r.n)
       const max = Math.max(1, ...grupos.map(g => g.r.n))
       return <section key={k} className="rounded-lg border p-2">
         <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">Por {k.replace(/_/g, ' ')}</h4>

@@ -10,7 +10,7 @@ export type Accion = 'CORREGIR' | 'EXCLUIR'
 export interface PuntoTendencia { desde: string; etiqueta: string; valor: number | null; estado: EstadoKpi }
 export interface KpiDef {
   codigo: string; equipo: Equipo; nombre: string; descripcion: string; formula: string; fuente: string; unidad: string
-  sentido: 'MAYOR' | 'MENOR'; meta: number | null; tolerancia: number | null; responsable: string | null
+  sentido: 'MAYOR' | 'MENOR'; meta: number | null; tolerancia: number | null; responsable: string | null; factor?: number
   estado_datos: EstadoDatos; nota_datos: string | null; tipo: 'PERIODO' | 'FOTO'; frecuencias: Frecuencia[]
 }
 export interface KpiResultado extends KpiDef {

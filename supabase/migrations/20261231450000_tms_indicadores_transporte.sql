@@ -147,3 +147,13 @@ BEGIN
   END IF;
   -- T2, I1, I2, A2, A3:$r$);
 END $m$;
+
+-- 4. El factor del indicador viaja a la ficha: los desgloses calculan con el mismo factor que el tablero
+DO $m$
+DECLARE def text; a text := '''unidad'', d.unidad,';
+BEGIN
+  def := pg_get_functiondef('public.kpi_eq_def_json(public.kpi_eq_def)'::regprocedure);
+  IF position('''factor''' IN def) > 0 THEN RETURN; END IF;
+  IF position(a IN def) = 0 THEN RAISE EXCEPTION 'kpi_eq_def_json cambió: revisar esta migración'; END IF;
+  EXECUTE replace(def, a, '''unidad'', d.unidad, ''factor'', d.factor,');
+END $m$;
