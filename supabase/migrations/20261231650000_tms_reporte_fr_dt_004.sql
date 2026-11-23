@@ -83,9 +83,7 @@ BEGIN
       FROM public.dispatches d JOIN public.dispatch_requests r ON r.dispatch_id = d.id JOIN public.transport_requests t ON t.id = r.transport_request_id
       LEFT JOIN public.delivery_conformities c ON c.dispatch_id = d.id AND c.request_id = t.id
       WHERE d.status <> 'CANCELADO' AND coalesce(r.status, '') NOT IN ('CANCELADO', 'RETIRADO') AND public.can_access_site(d.site_id)
-        AND ((coalesce(d.departure_time, d.start_odometer_at, d.tercero_salida_at, d.scheduled_departure)) AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to
-        AND (p_plate IS NULL OR upper(replace(d.vehicle_plate, ' ', '')) LIKE '%' || upper(replace(p_plate, ' ', '')) || '%')
-        AND (p_driver IS NULL OR coalesce(d.driver_name, d.tercero_conductor, '') ILIKE '%' || p_driver || '%')),
+        AND ((coalesce(d.departure_time, d.start_odometer_at, d.tercero_salida_at, d.scheduled_departure)) AT TIME ZONE 'America/Lima')::date BETWEEN p_from AND p_to),
     s2 AS (
       -- Orden del viaje en el día de la unidad: el odómetro de jornada solo vale para el primer y el último viaje
       SELECT s1.*, max(s1.viaje_dia) OVER (PARTITION BY s1.placa, s1.fecha) viajes_dia
@@ -142,9 +140,9 @@ BEGIN
       'km_planta', f.km_planta,
       'km_total', CASE WHEN f.km_planta IS NOT NULL AND f.km_inicial IS NOT NULL THEN f.km_planta - f.km_inicial END,
       'ocupacion_pct', f.occupancy_pct, 'ocupacion_fuente', f.occupancy_source,
-      'peso_kg', coalesce(nullif(f.estimated_weight, 0), (SELECT nullif(sum(pl.total_weight_kg), 0) FROM public.wms_packing_releases pl WHERE pl.transport_request_id = f.rid)),
+      'peso_kg', coalesce(nullif(f.estimated_weight, 0), (SELECT nullif(sum(pl.total_weight_kg), 0) FROM public.wms_packing_releases pl WHERE pl.transport_request_id = f.rid AND coalesce(pl.status, '') <> 'REEMPLAZADO')),
       'peso_fuente', CASE WHEN f.estimated_weight > 0 THEN 'SOLICITUD'
-                          WHEN EXISTS (SELECT 1 FROM public.wms_packing_releases pl WHERE pl.transport_request_id = f.rid AND pl.total_weight_kg > 0) THEN 'PACKING_LIST' END,
+                          WHEN EXISTS (SELECT 1 FROM public.wms_packing_releases pl WHERE pl.transport_request_id = f.rid AND pl.total_weight_kg > 0 AND coalesce(pl.status, '') <> 'REEMPLAZADO') THEN 'PACKING_LIST' END,
       'tipo_descarga', coalesce(
         CASE WHEN EXISTS (SELECT 1 FROM public.route_forklifts rf WHERE rf.dispatch_id = f.did AND (rf.transport_request_id IS NULL OR rf.transport_request_id = f.rid)) THEN 'MONTACARGAS' END,
         (SELECT string_agg(DISTINCT CASE WHEN upper(uc.concept) LIKE 'MONTACARG%' THEN 'MONTACARGAS' ELSE upper(uc.concept) END, ' / ')
@@ -152,7 +150,9 @@ BEGIN
         'MANUAL'),
       'viaje', f.dispatch_number, 'solicitud', f.request_number, 'estado_viaje', f.ds)
       ORDER BY f.fecha, f.placa, f.vuelta)
-    FROM f), '[]'::jsonb);
+    -- Los filtros se aplican después de numerar vueltas y viajes del día: filtrar no cambia los datos de una fila
+    FROM f WHERE (p_plate IS NULL OR upper(replace(coalesce(f.placa, ''), ' ', '')) LIKE '%' || upper(replace(p_plate, ' ', '')) || '%')
+      AND (p_driver IS NULL OR coalesce(f.conductor, '') ILIKE '%' || p_driver || '%')), '[]'::jsonb);
 END $$;
 REVOKE ALL ON FUNCTION public.fr_dt_004_report(date, date, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.fr_dt_004_report(date, date, text, text) TO authenticated;

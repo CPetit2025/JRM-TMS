@@ -32,6 +32,10 @@ BEGIN
              WHERE y->>'km_cliente_fuente' IS DISTINCT FROM 'ODOMETRO' AND (SELECT dd.dispatch_number FROM public.dispatches dd WHERE dd.id = dr.dispatch_id)::text = y->>'viaje') THEN
     RAISE EXCEPTION 'CAJA C243 FAIL: con odómetro de parada no se usa el odómetro'; END IF;
 
+  -- Filtrar por placa no cambia los datos de las filas que quedan
+  SELECT y->>'placa' p INTO r FROM jsonb_array_elements(rep) y WHERE y->>'placa' IS NOT NULL AND y->>'modalidad' = 'PROPIA' LIMIT 1;
+  IF r.p IS NOT NULL AND EXISTS (SELECT 1 FROM jsonb_array_elements(public.fr_dt_004_report(desde, hasta, r.p)) z WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(rep) y WHERE y = z)) THEN
+    RAISE EXCEPTION 'CAJA C243 FAIL: el filtro por placa cambió los datos de una fila'; END IF;
   -- Ocupación: fuera de 1–100 se rechaza
   SELECT dispatch_id INTO r FROM public.dispatch_requests LIMIT 1;
   BEGIN PERFORM public.dispatch_set_occupancy(r.dispatch_id, '[{"request_id":"00000000-0000-0000-0000-000000000000","pct":0}]'); ok := true;
