@@ -2,31 +2,24 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { AlertTriangle, Gauge } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { listenWorkdayReminderTap, syncWorkdayReminder } from '@/lib/workday-reminder'
 
 type Pending = { operation_date: string; unit: string } | null
 const ddmm = (d: string) => d.split('-').reverse().slice(0, 2).join('/')
 
-/** Aviso en Inicio: jornada anterior sin cerrar (bloquea el checklist) y jornada de hoy abierta; programa el recordatorio. */
+/** Aviso en Inicio: jornada anterior sin cerrar (bloquea el checklist) y jornada de hoy abierta. El recordatorio lo programa el layout. */
 export function WorkdayCloseAlert() {
-  const router = useRouter()
   const [pending, setPending] = useState<Pending>(null)
   const [open, setOpen] = useState(false)
 
-  useEffect(() => listenWorkdayReminderTap(url => router.push(url)), [router])
   useEffect(() => {
     const supabase = createClient()
     let alive = true
     void Promise.all([supabase.rpc('get_driver_pending_close'), supabase.rpc('get_driver_workday')]).then(([p, w]) => {
       if (!alive) return
       setPending(p.data?.success ? (p.data.pending as Pending) : null)
-      if (w.error || !w.data?.success) return  // sin señal: se deja el recordatorio como estaba
-      const isOpen = !!(w.data.start && !w.data.close)
-      setOpen(isOpen)
-      void syncWorkdayReminder(isOpen)
+      setOpen(!!(w.data?.success && w.data.start && !w.data.close))
     })
     return () => { alive = false }
   }, [])

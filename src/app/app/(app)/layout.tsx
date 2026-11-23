@@ -8,6 +8,7 @@ import { forgetTrackingDevice, nativeRouteTracker } from '@/lib/native-route-tra
 import GPSGuard from '@/components/driver/GPSGuard'
 import NotificationProvider from '@/components/NotificationProvider'
 import { AppUpdateNotice } from '@/components/AppUpdateNotice'
+import { WorkdayReminderSync } from '@/components/driver/WorkdayReminderSync'
 import { JrmAiAssistant } from '@/components/JrmAiAssistant'
 import { ActiveTripProvider } from '@/contexts/ActiveTripContext'
 import { OperationalStatusProvider } from '@/contexts/OperationalStatusContext'
@@ -20,6 +21,7 @@ function OperativeShell({ children, onLogout }: { children: React.ReactNode; onL
   return <NotificationProvider role={user?.employee_type === 'CONDUCTOR' ? 'driver' : 'operario'}>
     <div className="min-h-dvh bg-slate-50 pb-[calc(76px+env(safe-area-inset-bottom))] text-slate-900">
       <AppUpdateNotice />
+      <WorkdayReminderSync />
       <OperativeHeader onLogout={onLogout} />
       <main>{children}</main>
       <OperativeBottomNav />
