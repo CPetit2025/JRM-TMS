@@ -24,6 +24,9 @@ export default function ChecklistPage() {
  const [retry, setRetry] = useState<{ operation: string; captured: string } | null>(null)
  // Odómetro del tablero: ingreso manual obligatorio (se compara con la última lectura de la unidad)
  const [lastOdo, setLastOdo] = useState<number | null>(null)
+ // Jornada anterior sin odómetro de cierre: el servidor no acepta el inicio de hoy hasta cerrarla
+ const [prevClose, setPrevClose] = useState<{ operation_date: string; unit: string } | null>(null)
+ useEffect(() => { supabase.rpc('get_driver_pending_close').then(({ data }) => setPrevClose(data?.success ? data.pending : null)) }, [supabase])
  const pending = useLiveQuery<OfflinePreuse[]>(() => context?.driver?.profile_id ? db.preuse.where('profile_id').equals(context.driver.profile_id).filter(row => row.synced === 0).toArray() : Promise.resolve([]), [context?.driver?.profile_id])
  const plateKey = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '')
  const existing = context?.daily_record && plateKey(context.daily_record.vehicle_plate) === plateKey(plate) && context.daily_record.operation_date === context.operation_date ? context.daily_record : null
@@ -50,6 +53,7 @@ export default function ChecklistPage() {
  }, [storageKey, draft, retry])
  const begin = async () => {
   if (!plate || busy || !context?.driver || registered || queued) return
+  if (prevClose) { toast.error(`Primero cierra la jornada del ${prevClose.operation_date} (unidad ${prevClose.unit}).`); return }
   setBusy(true)
   try {
    const { data, error } = await supabase.rpc('select_driver_preuse_unit', { p_plate: plate }); if (error) throw error
@@ -102,6 +106,7 @@ export default function ChecklistPage() {
  return <div className="mx-auto max-w-2xl space-y-4 p-4 pb-8">
   <header className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-semibold text-slate-500">SISTEMA INTEGRADO DE GESTIÓN · {PREUSE_FORMAT.code} · Versión {PREUSE_FORMAT.version}</p><h1 className="mt-2 flex items-start gap-2 text-lg font-bold text-[#002855]"><ClipboardCheck className="h-6 w-6 shrink-0" />Inspección de pre uso de vehículos livianos y pesados</h1><p className="mt-2 text-sm text-slate-600">Obligatoria al iniciar operaciones, con o sin ruta. Cada conductor registra un checklist por unidad y día. Al cambiar a otra unidad debe inspeccionarla; una reinspección requiere autorización.</p></header>
   {!!pending?.length && <section className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><h2 className="font-semibold">Inspecciones pendientes de sincronizar ({pending.length})</h2><p>No habilitan el inicio de ruta hasta que el servidor confirme el registro.</p>{pending.map(row => <p key={row.operation_id}>{row.vehicle_plate || 'Unidad'} · {row.operation_date || row.captured_at.slice(0,10)}{row.last_error && <span className="block text-xs">{row.last_error}</span>}</p>)}<button type="button" disabled={busy} onClick={async () => { setBusy(true); try { await syncOwnPreuse(supabase); await load(); await refresh() } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) } }} className="min-h-11 rounded-lg border border-amber-400 px-3 font-semibold">Sincronizar pendientes</button></section>}
+  {prevClose && <Link href="/app/jornada" className="block rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><b className="block">Jornada del {prevClose.operation_date} sin cerrar · {prevClose.unit}</b>Registra primero el odómetro de cierre de esa jornada; luego podrás hacer el checklist de hoy. Toca aquí para cerrarla.</Link>}
   {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
   {loading && !context ? <p className="flex justify-center p-6"><Loader2 className="h-6 w-6 animate-spin" /></p> : !revision ? <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
    <p className="text-sm"><b>Conductor:</b> {context?.driver?.name || 'Sin conductor activo'} · <b>Fecha:</b> {context?.operation_date || 'Sin confirmar'}</p>

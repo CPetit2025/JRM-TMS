@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { errorMessage } from '@/lib/caja'
 import { formatKm } from '@/lib/odometer'
+import { syncWorkdayReminder } from '@/lib/workday-reminder'
 
 type Workday = {
   success: boolean; error?: string; operation_date: string; unit: string | null
@@ -23,13 +24,37 @@ export default function JornadaPage() {
   const [busy, setBusy] = useState(false)
   const [operation, setOperation] = useState<string | null>(null)
 
+  const [pending, setPending] = useState<{ operation_date: string; unit: string; start_odometer: number | null } | null>(null)
+  const [prevOdo, setPrevOdo] = useState(''), [noAccess, setNoAccess] = useState(false), [reason, setReason] = useState('')
+
   const load = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase.rpc('get_driver_workday')
+    const [{ data, error }, p] = await Promise.all([supabase.rpc('get_driver_workday'), supabase.rpc('get_driver_pending_close')])
     setLoading(false)
+    setPending(p.data?.success ? p.data.pending : null)
     if (error) { toast.error(errorMessage(error)); return }
     setDay(data as Workday)
+    if (data?.success) void syncWorkdayReminder(!!(data.start && !data.close))
   }, [supabase])
+
+  // Jornada anterior sin cierre: odómetro actual del tablero o, sin acceso a la unidad, el motivo
+  const closePrevious = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (busy || !pending) return
+    if (!navigator.onLine) { toast.error('Sin señal: vuelve a intentarlo cuando tengas conexión.'); return }
+    const value = Number(prevOdo.replace(',', '.'))
+    if (!noAccess && !(value > 0 && value < 5000000)) { toast.error('Ingrese el odómetro (km) que marca el tablero.'); return }
+    if (noAccess && reason.trim().length < 10) { toast.error('Explique por qué no puede leer el odómetro (mínimo 10 caracteres).'); return }
+    const start = pending.start_odometer != null ? Number(pending.start_odometer) : null
+    if (!noAccess && start != null && value < start && !window.confirm(`El odómetro (${formatKm(value)}) es menor que el de inicio de esa jornada (${formatKm(start)}). ¿Está seguro?`)) return
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.rpc('close_driver_pending_workday', { p_operation: crypto.randomUUID(), p_odometer: noAccess ? null : String(value), p_reason: noAccess ? reason.trim() : null })
+      if (error || !data?.success) throw error || new Error(data?.error || 'No se pudo cerrar la jornada')
+      toast.success(data.waived ? 'Motivo registrado. Ya puedes hacer el checklist de hoy.' : data.km != null ? `Jornada cerrada: ${formatKm(data.km)} recorridos` : 'Jornada cerrada')
+      setPrevOdo(''); setReason(''); setNoAccess(false); await load()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t) }, [load])
 
   const km = Number(odometer.replace(',', '.'))
@@ -58,6 +83,15 @@ export default function JornadaPage() {
       <h1 className="flex items-center gap-2 text-lg font-bold text-[#002855]"><Gauge className="h-6 w-6" />Cerrar jornada</h1>
       <p className="mt-1 text-sm text-slate-600">Al terminar el día registra el odómetro final que marca el tablero. Con el odómetro del checklist se calculan los km del día de la unidad.</p>
     </header>
+    {pending && <form onSubmit={closePrevious} className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+      <p><b className="block">Jornada del {pending.operation_date} sin cerrar · {pending.unit}</b>Registra el odómetro que marca ahora el tablero de esa unidad. Hasta cerrarla no podrás hacer el checklist de hoy.</p>
+      {!noAccess && <label className="block font-semibold">Odómetro actual (km)
+        <input inputMode="decimal" value={prevOdo} onChange={e => setPrevOdo(e.target.value.replace(/[^0-9.,]/g, ''))} placeholder={pending.start_odometer != null ? `Inicio: ${formatKm(Number(pending.start_odometer))}` : 'Ej.: 125610'} className={input} /></label>}
+      <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={noAccess} onChange={e => setNoAccess(e.target.checked)} className="h-5 w-5" />No tengo acceso a esa unidad</label>
+      {noAccess && <label className="block font-semibold">Motivo (quedará para revisión)
+        <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Ej.: la unidad quedó en taller" className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900" /></label>}
+      <button type="submit" disabled={busy} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{noAccess ? 'Registrar motivo' : 'Cerrar esa jornada'}</button>
+    </form>}
     {loading && !day ? <p className="flex justify-center p-6"><Loader2 className="h-6 w-6 animate-spin" /></p>
       : !day?.success ? <p className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{day?.error || 'No se pudo cargar la jornada'}</p>
       : !day.unit ? <section className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
