@@ -118,6 +118,14 @@ export function StepTransporte({ rb }: { rb: RouteBuilder }) {
       )}
       <p className="text-xs text-slate-600">Capacidad de la unidad: {cap ? <b className="tabular-nums">{Math.round(cap).toLocaleString('es-PE')} kg{rb.capacityM3 ? ` · ${rb.capacityM3.toLocaleString('es-PE')} m³` : ''}</b> : <span className="text-amber-700">sin capacidad registrada</span>}
         {' '}· Carga declarada en las solicitudes: <b className={`tabular-nums ${cap && rb.declaredKg > cap ? 'text-red-700' : ''}`}>{Math.round(rb.declaredKg).toLocaleString('es-PE')} kg</b></p>
+      <fieldset className="space-y-1 rounded-lg border border-slate-200 p-3"><legend className="px-1 text-xs font-semibold text-slate-800">Ocupación de la unidad por parada (%) *</legend>
+        <p className="text-xs text-slate-500">Volumen que ocupa la carga de cada parada en la unidad (formato FR-DT.004). El conductor puede corregirlo al cargar.</p>
+        {rb.selectedServices.map(req => <label key={req.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span><strong>{req.request_number}</strong> · {serviceLabel(req)}</span>
+          <span className="flex items-center gap-1"><input type="number" min="1" max="100" step="1" inputMode="numeric" aria-label={`Ocupación ${req.request_number}`} value={rb.occupancy[req.id] ?? ''}
+            onChange={e => rb.setOccupancy(prev => ({ ...prev, [req.id]: e.target.value }))} className="min-h-10 w-20 rounded-lg border border-slate-300 px-2 text-right tabular-nums" />%</span>
+        </label>)}
+      </fieldset>
       {rb.ownInternalOnly ? <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-900">Operación interna con flota propia (recojo o traslado sin OT): sin flete. Se conserva el seguimiento y la documentación.</p> : <FreightPanel rb={rb} />}
     </div>
   )
