@@ -106,9 +106,11 @@ export async function exportPdf(rows: FrRow[], meta: FrMeta) {
     doc.text(`Período: ${fecha(meta.from)} a ${fecha(meta.to)}${meta.filters ? ` · ${meta.filters}` : ''} · ${rows.length} paradas · extraído ${extract()} (hora de Lima) · celdas en ámbar: dato estimado o corregido`, M, M + HDR + 5)
   }
   const top = M + HDR + 8
+  // Títulos de columna: se miden una vez y la misma altura se usa al paginar y al dibujar
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2)
+  const lines = COLS.map((c, i) => doc.splitTextToSize(c.h, widths[i] - 1.5) as string[]), headH = Math.max(...lines.map(l => l.length)) * 2.6 + 2
   const colHead = (y: number) => {
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2); doc.setFillColor(0, 40, 85); doc.setTextColor(255)
-    const lines = COLS.map((c, i) => doc.splitTextToSize(c.h, widths[i] - 1.5) as string[]), h = Math.max(...lines.map(l => l.length)) * 2.6 + 2
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2); const h = headH
     let x = M; COLS.forEach((_, i) => { doc.setFillColor(0, 40, 85); doc.setDrawColor(0); doc.rect(x, y, widths[i], h, 'FD'); doc.setTextColor(255); doc.text(lines[i], x + widths[i] / 2, y + 2.6, { align: 'center' }); x += widths[i] })
     doc.setTextColor(0); return y + h
   }
@@ -116,8 +118,8 @@ export async function exportPdf(rows: FrRow[], meta: FrMeta) {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5)
   const cells = rows.map(r => COLS.map((c, i) => doc.splitTextToSize(String(c.v(r)), widths[i] - 1.5) as string[]))
   const heights = cells.map(row => Math.max(...row.map(l => l.length)) * 2.6 + 1.6)
-  const pages: number[][] = [[]]; let y = top + 12
-  heights.forEach((h, i) => { if (y + h > H - M) { pages.push([]); y = top + 12 } pages[pages.length - 1].push(i); y += h })
+  const pages: number[][] = [[]]; let y = top + headH
+  heights.forEach((h, i) => { if (y + h > H - M && pages[pages.length - 1].length) { pages.push([]); y = top + headH } pages[pages.length - 1].push(i); y += h })
   pages.forEach((idx, p) => {
     if (p) doc.addPage(); header(p + 1, pages.length); let yy = colHead(top)
     doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setDrawColor(150); doc.setLineWidth(0.1)
