@@ -30,6 +30,7 @@ export default function ProgramaDespachoPage() {
   const view = useMemo(() => rows.filter(r => !mode || r.modalidad === mode), [rows, mode])
   const pg = usePagination(view, 'programa-despacho', (r, col) => COLS[col] ? COLS[col].v(r) : '')
   const gaps = useMemo(() => ({
+    llegGps: view.filter(r => r.llegada_fuente === 'GPS').length, sinDescarga: view.filter(r => r.llegada_fuente && !r.tiempos_fuente).length,
     kmGps: view.filter(r => r.km_cliente_fuente === 'GPS').length, sinKm: view.filter(r => r.modalidad === 'PROPIA' && r.km_cliente == null).length,
     sinOcup: view.filter(r => r.ocupacion_pct == null).length, sinPeso: view.filter(r => r.peso_kg == null).length,
     sinSalida: view.filter(r => !r.hora_salida).length, sinPlanta: view.filter(r => !r.hora_llegada_planta).length,
@@ -59,7 +60,7 @@ export default function ProgramaDespachoPage() {
       {(plate || driver || mode) && <button type="button" onClick={() => { setPlate(''); setDriver(''); setMode('') }} className="min-h-11 rounded-lg border px-3 font-semibold">Limpiar filtros</button>}
     </section>
     {error && <p role="alert" className="rounded-lg border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">{error}</p>}
-    {!loading && view.length > 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700">{view.length} paradas · km en cliente estimado con GPS: {gaps.kmGps} · sin km en cliente (propia): {gaps.sinKm} · sin hora de salida: {gaps.sinSalida} · sin llegada a planta: {gaps.sinPlanta} · sin m³ %: {gaps.sinOcup} · sin peso: {gaps.sinPeso}. Un dato vacío no se registró; nunca se rellena con 0.</p>}
+    {!loading && view.length > 0 && <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700">{view.length} paradas · llegadas por GPS: {gaps.llegGps} · sin marca de descarga: {gaps.sinDescarga} · km en cliente estimado con GPS: {gaps.kmGps} · sin km en cliente (propia): {gaps.sinKm} · sin hora de salida: {gaps.sinSalida} · sin llegada a planta: {gaps.sinPlanta} · sin m³ %: {gaps.sinOcup} · sin peso: {gaps.sinPeso}. Un dato vacío no se registró; nunca se rellena con 0.</p>}
     {loading ? <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" /> : view.length === 0
       ? <p className="rounded-xl border border-slate-200 bg-white p-6 text-center text-slate-500">Sin paradas en el período.</p>
       : <div className="rounded-xl border border-slate-200 bg-white"><div className="overflow-x-auto"><DataTable dense onSortChange={pg.onSortChange} className="min-w-[2400px] text-xs">
@@ -68,10 +69,10 @@ export default function ProgramaDespachoPage() {
           {COLS.map(c => { const v = c.v(r)
             const est = estimated(r, c.h)
             return <td key={c.h} className={`p-2 ${typeof v === 'number' ? 'text-right tabular-nums' : ''} ${est ? 'bg-amber-50' : ''}`}
-              title={est ? (c.h === 'KM/LLEGADA CLIENTE' ? 'Estimado: km inicial + km GPS hasta la llegada' : c.h === 'PESO (KG)' ? 'Peso del packing list' : 'Corregido por el conductor') : undefined}>
+              title={est ? (c.h === 'KM/LLEGADA CLIENTE' ? 'Estimado: km inicial + km GPS hasta la llegada' : c.h === 'PESO (KG)' ? 'Peso del packing list' : c.h === 'TIEMPO DE ENTREGA DESCARGA' ? 'Estimado: de la llegada al envío de la guía (sin marca de descarga)' : 'Corregido por el conductor') : undefined}>
               {typeof v === 'number' ? num(v) : v}{est && <span className="sr-only"> (estimado)</span>}</td> })}
         </tr>)}</tbody></DataTable></div>
         <TablePagination total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="paradas" /></div>}
-    <p className="text-xs text-slate-500">Celdas en ámbar: dato estimado (km por GPS o peso del packing list) o corregido por el conductor (m³ %). Pase el cursor o el lector de pantalla para ver la fuente.</p>
+    <p className="text-xs text-slate-500">Las horas de salida, llegada, salida del cliente y llegada a planta salen del GPS (geocercas) y, si no hay señal, de lo que registró el conductor. Celdas en ámbar: dato estimado (km por GPS, peso del packing list o descarga sin marca) o corregido por el conductor (m³ %). Pase el cursor o el lector de pantalla para ver la fuente.</p>
   </div>
 }

@@ -6,6 +6,7 @@ import { arrivalSourceLabel, conformityLabels, deliveryTime, type DeliveryDetail
 import { EvidenceForm, type EvidenceDraft } from './EvidenceForm'
 import { RejectionForm, type RejectionDraft } from './RejectionForm'
 import { OccupancyCorrection } from './OccupancyCorrection'
+import { UnloadMark } from './UnloadMark'
 import { StopTimes } from './StopTimes'
 import { readActionQueue, readRouteQueue, routeQueueKey, saveOfflineAction, syncOfflineActions, syncRoutePoints } from '@/lib/route-point-sync'
 
@@ -37,6 +38,7 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
   const db = useMemo(() => createClient(), [])
   const [detail, setDetail] = useState<DeliveryDetail | null>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [queued, setQueued] = useState(false)
+  const [unloadDone, setUnloadDone] = useState(false)
   const [rejecting, setRejecting] = useState(false), [rejectionQueued, setRejectionQueued] = useState(false), [loadedAt, setLoadedAt] = useState(0)
   const load = useCallback(async () => {
     const pending = readActionQueue().filter(action => action.payload.dispatch_id === dispatchId && action.payload.request_id === requestId)
@@ -135,7 +137,8 @@ export function DriverDelivery({ dispatchId, requestId, driverId, userId, guide,
       {!documentaryOnly && detail?.arrived_at && <p className="text-xs text-slate-600">Llegada {deliveryTime(detail.arrived_at)} · {arrivalSourceLabel(detail.arrival_source)}{autoArrival && <button disabled={busy} onClick={() => void undoArrival()} className="ml-2 min-h-9 font-semibold text-blue-700 underline">Deshacer</button>}</p>}
       {rejection?.kind === 'PARCIAL' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Rechazo parcial registrado: {rejection.reason}{rejection.note ? ` · ${rejection.note}` : ''}. Envía la guía firmada de lo que sí se entregó.</p>}
       {rejecting ? <RejectionForm busy={busy} onSubmit={reject} onCancel={() => setRejecting(false)} /> : <>
-        <EvidenceForm key={detail?.submissions[0]?.id || requestId} busy={busy} guide={guide} requireOdometer={requireOdometer} onSubmit={submit} />
+        {!documentaryOnly && requireOdometer && detail?.arrived_at && <UnloadMark dispatchId={dispatchId} requestId={requestId} required={!unloadDone} onDone={setUnloadDone} />}
+        {(documentaryOnly || !requireOdometer || !detail?.arrived_at || unloadDone) && <EvidenceForm key={detail?.submissions[0]?.id || requestId} busy={busy} guide={guide} requireOdometer={requireOdometer} onSubmit={submit} />}
         {canReject && <button type="button" disabled={busy} onClick={() => setRejecting(true)} className="min-h-11 w-full rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-800">¿No se pudo entregar? Registrar rechazo en destino</button>}
       </>}
     </>}
