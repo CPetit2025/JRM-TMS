@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { readActionQueue, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
+import { readActionQueue, saveOfflineAction } from '@/lib/route-point-sync'
 
 /** Inicio de descarga (FR-DT.004): separa la espera de la descarga. Antes de enviar la guía es obligatorio responder. */
 export function UnloadMark({ dispatchId, requestId, required, onDone }: { dispatchId: string; requestId: string; required: boolean; onDone: (done: boolean) => void }) {
-  // Marca guardada sin señal: ya cuenta como respondida
-  const [queuedAt] = useState(() => readActionQueue().find(a => a.type === 'delivery_mark_unload' && a.payload.dispatch_id === dispatchId && a.payload.request_id === requestId)?.payload.at as string | undefined)
+  // Marca guardada sin señal: cuenta como respondida mientras no la haya rechazado el servidor
+  const [queued] = useState(() => readActionQueue().find(a => a.type === 'delivery_mark_unload' && a.payload.dispatch_id === dispatchId && a.payload.request_id === requestId))
+  const queuedAt = queued?.status === 'pending' ? queued.payload.at as string : undefined
   const [state, setState] = useState<'cargando' | 'pendiente' | 'listo'>(queuedAt ? 'listo' : 'cargando'), [at, setAt] = useState<string | null>(queuedAt ?? null)
-  const [mins, setMins] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  const [mins, setMins] = useState(''), [error, setError] = useState(queued?.status === 'error' ? `No se guardó la hora marcada: ${queued.last_error || 'rechazada'}. Vuelva a indicarla.` : ''), [busy, setBusy] = useState(false)
   useEffect(() => {
     let alive = true
     if (queuedAt) { onDone(true); return }
@@ -23,9 +24,14 @@ export function UnloadMark({ dispatchId, requestId, required, onDone }: { dispat
   const mark = async (when: Date, noWait = false) => {
     setBusy(true); setError('')
     try {
-      saveOfflineAction('delivery_mark_unload', { dispatch_id: dispatchId, request_id: requestId, at: when.toISOString(), no_wait: noWait })
+      // Sin señal queda en cola y cuenta como respondida; con señal se espera la respuesta del servidor
+      if (!navigator.onLine) {
+        saveOfflineAction('delivery_mark_unload', { dispatch_id: dispatchId, request_id: requestId, at: when.toISOString(), no_wait: noWait })
+        setState('listo'); setAt(when.toISOString()); onDone(true); return
+      }
+      const { error: e } = await createClient().rpc('delivery_mark_unload', { p_dispatch: dispatchId, p_request: requestId, p_at: noWait ? null : when.toISOString(), p_no_wait: noWait })
+      if (e) { setError(e.message); return }
       setState('listo'); setAt(when.toISOString()); onDone(true)
-      if (navigator.onLine) await syncOfflineActions()
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo guardar la hora de descarga') } finally { setBusy(false) }
   }
   if (state === 'cargando') return null

@@ -240,6 +240,22 @@ END $m$;
 -- Cálculo inicial de los últimos 45 días
 SELECT public.dispatch_gps_milestones_job();
 
+-- Si cambia una geocerca (corrección, aprendizaje o alta), el job recalcula los viajes que la visitan
+CREATE OR REPLACE FUNCTION public.geo_points_invalidate_trips()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND (NEW.lat, NEW.lon, NEW.radius_m) IS NOT DISTINCT FROM (OLD.lat, OLD.lon, OLD.radius_m) THEN RETURN NEW; END IF;
+  UPDATE public.dispatches x SET gps_computed_at = NULL
+  WHERE x.gps_computed_at IS NOT NULL AND x.created_at > now() - interval '45 days'
+    AND (NEW.kind = 'PLANTA' OR EXISTS (SELECT 1 FROM public.dispatch_requests r JOIN public.transport_requests t ON t.id = r.transport_request_id
+         WHERE r.dispatch_id = x.id AND public.geo_address_key(public.stop_visit_address(t)) = NEW.address_key));
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.geo_points_invalidate_trips() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS geo_points_invalidate_trips ON public.geo_points;
+CREATE TRIGGER geo_points_invalidate_trips AFTER INSERT OR UPDATE ON public.geo_points
+FOR EACH ROW EXECUTE FUNCTION public.geo_points_invalidate_trips();
+
 -- Reporte FR-DT.004 con horas por GPS (geocercas) y lo manual como respaldo; cada hora indica su fuente
 CREATE OR REPLACE FUNCTION public.fr_dt_004_report(p_from date, p_to date, p_plate text DEFAULT NULL, p_driver text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp AS $$

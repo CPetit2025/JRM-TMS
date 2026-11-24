@@ -34,6 +34,13 @@ BEGIN
       RAISE EXCEPTION 'CAJA C244 FAIL: «sin espera» no tomó la hora de llegada'; END IF;
   END IF;
 
+  -- Corregir la planta deja sus viajes para recalcular
+  IF EXISTS (SELECT 1 FROM public.dispatches WHERE gps_computed_at IS NOT NULL AND created_at > now() - interval '45 days') THEN
+    UPDATE public.geo_points SET radius_m = radius_m + 1 WHERE kind = 'PLANTA';
+    IF EXISTS (SELECT 1 FROM public.dispatches WHERE gps_computed_at IS NOT NULL AND created_at > now() - interval '45 days') THEN
+      RAISE EXCEPTION 'CAJA C244 FAIL: corregir la geocerca de planta no invalidó los viajes'; END IF;
+  END IF;
+
   -- Reporte: una parada con llegada GPS sale con fuente GPS
   SELECT p.id INTO adm FROM public.profiles p JOIN public.roles ro ON ro.id = p.role_id WHERE p.is_active AND ro.name = 'Administrador' LIMIT 1;
   PERFORM set_config('request.jwt.claim.sub', adm::text, true); PERFORM set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
