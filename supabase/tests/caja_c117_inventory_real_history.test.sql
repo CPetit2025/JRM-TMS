@@ -1,5 +1,6 @@
 -- A production upload requests ONE complete model rebuild, with an independent server budget.
 -- C115 covers isolated business scenarios; this test exercises the actual history, unchanged.
+-- Cuenta sobre inv_movements_v: los contratos ocultos (inv_contratos_ocultos) quedan fuera del modelo.
 -- All derived writes roll back at the terminal PASS/FAIL exception.
 BEGIN;
 -- Esperar a un recálculo real en curso (cron o carga) en vez de chocar con él a mitad de la prueba
@@ -11,7 +12,7 @@ DECLARE result jsonb; expected bigint; started timestamptz := clock_timestamp();
 BEGIN
  result := public.inv_rebuild();
  IF NOT COALESCE((result->>'success')::boolean,false) THEN RAISE EXCEPTION 'CAJA C117 FAIL: rebuild %',result; END IF;
- SELECT count(*) INTO expected FROM public.inv_movements WHERE active
+ SELECT count(*) INTO expected FROM public.inv_movements_v WHERE active
    AND fecha >= COALESCE((SELECT model_from FROM public.inv_state WHERE id=1),'-infinity'::date);
  IF (result->>'movimientos')::bigint IS DISTINCT FROM expected THEN
    RAISE EXCEPTION 'CAJA C117 FAIL: history coverage mismatch';
@@ -21,7 +22,7 @@ BEGIN
     WHERE l.consumed IS DISTINCT FROM COALESCE(a.q,0)) THEN
    RAISE EXCEPTION 'CAJA C117 FAIL: consumed layer balance differs from detailed FIFO';
  END IF;
- IF EXISTS(SELECT 1 FROM public.inv_movements m LEFT JOIN
+ IF EXISTS(SELECT 1 FROM public.inv_movements_v m LEFT JOIN
     (SELECT out_id,sum(qty) q FROM public.inv_allocations GROUP BY out_id) a ON a.out_id=m.id
     WHERE m.active AND m.cantidad<0
       AND m.fecha >= COALESCE((SELECT model_from FROM public.inv_state WHERE id=1),'-infinity'::date)

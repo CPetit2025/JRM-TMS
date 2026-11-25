@@ -109,6 +109,8 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   const [outsourcingSupports,setOutsourcingSupports]=useState<string[]>([])
   const [outsourcingError,setOutsourcingError]=useState('')
   const [freightShares, setFreightShares] = useState<Record<string, string>>({})
+  // % de ocupación de la unidad por parada (FR-DT.004); el conductor puede corregirlo al cargar
+  const [occupancy, setOccupancy] = useState<Record<string, string>>({})
   // Motivo cuando el flete de la ruta difiere del referencial de las solicitudes
   const [freightReason, setFreightReason] = useState('')
   // Observaciones operativas de la programación (obligatorias si la salida queda después de la atención requerida)
@@ -257,6 +259,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     gr && modalidad === 'TERCERO' && capacityKg == null && { key: 'capacidad-tercero', label: 'Unidad del tercero sin capacidad registrada', step: 2, level: 'info' },
     has && !forkliftValid(routeForklift, forkliftStops) && { key: 'montacarga', label: 'Montacarga: parada, proveedor, montacarguista y tarifa por hora', step: 3, level: 'block' },
     has && forkliftValid(routeForklift, forkliftStops) && !!special.error && { key: 'adicionales', label: special.error, step: 3, level: 'block' },
+    gr && selectedServices.some(r => { const v = occupancy[r.id]; return v === undefined || v === '' || !(Number(v) > 0 && Number(v) <= 100) }) && { key: 'ocupacion', label: 'Ocupación de la unidad por parada (% de 1 a 100)', step: 2, level: 'block' },
     !newDispatch.scheduled_departure && { key: 'salida', label: 'Fecha y hora de salida', step: 4, level: 'block' },
     late.length > 0 && notes.trim().length < 5 && { key: 'salida-tarde', label: `La salida queda después de la atención requerida (${late.map(r => r.request_number).join(', ')}): indique el motivo en Observaciones`, step: 4, level: 'block' },
     has && stockCorte && stockCorte.estado !== 'VIGENTE' && { key: 'stock', label: stockCorte.estado === 'SIN_CARGA' ? 'Sin carga del stock del ERP' : 'Stock del ERP desactualizado: cargue el Excel «Stock Bodega Despacho»', step: 1, level: 'warn' },
@@ -372,7 +375,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     setOutsourcingRequest(null);setOutsourcingAssignment('');setOutsourcingSupports([]);setOutsourcingResources([])
     setStep(1); setAutoDeparture(''); setAuxiliares([])
     setForklift(EMPTY_FORKLIFT); setSpecialServices(EMPTY_SPECIAL_SERVICES)
-    setNewDispatch(EMPTY_DISPATCH)
+    setNewDispatch(EMPTY_DISPATCH); setOccupancy({})
     setManualFreightCost(''); setFreightReason(''); setNotes(''); setFreightShares({})
     setTercero(TERCERO_VACIO); setModalidad('PROPIA')
   }
@@ -411,11 +414,21 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
   }
 
   // Complementos de la ruta recién creada; el mensaje final dice si alguno quedó pendiente
+  const saveOccupancy = async (dispatchId: string, prepared?: { request_id: string; pct: number }[]): Promise<boolean> => {
+    const items = prepared || newDispatch.selected_requests.filter(r => occupancy[r.id] !== undefined && occupancy[r.id] !== '').map(r => ({ request_id: r.id, pct: Number(occupancy[r.id]) }))
+    if (!items.length) return true
+    const { error } = await supabase.rpc('dispatch_set_occupancy', { p_dispatch: dispatchId, p_items: items })
+    if (error) toast.error('La ruta se programó, pero no se guardó el % de ocupación: ' + error.message, {
+      duration: 15000, action: { label: 'Reintentar', onClick: () => { void saveOccupancy(dispatchId, items) } },
+    })
+    return !error
+  }
   const saveComplements = async (dispatchId: string, withQuote: boolean) => {
     const quoteOk = withQuote && freightQuote ? await saveQuote(dispatchId, freightQuote) : true
     const notesOk = await saveNotes(dispatchId)
     const estimatesOk = await saveEstimates(dispatchId)
-    return quoteOk && notesOk && estimatesOk
+    const occupancyOk = await saveOccupancy(dispatchId)
+    return quoteOk && notesOk && estimatesOk && occupancyOk
   }
   const scheduled = (message: string, complete: boolean) => complete ? toast.success(message)
     : toast.warning(`${message} Algunos datos complementarios no se guardaron: use «Reintentar» en los avisos.`, { duration: 15000 })
@@ -682,7 +695,7 @@ export function useRouteBuilder({ supabase, pendingRequests, setPendingRequests,
     isModalOpen, setIsModalOpen, addServiceId, setAddServiceId, step, setStep, isSubmitting, calculatingDistance, autoDeparture,
     detectedFreightRate, loadingRate, manualFreightCost, setManualFreightCost, freightQuote, modalidad, changeModalidad, tercero, setTercero,
     assistants, assistantsLoading, assistantsError, fetchAssistants, auxiliares, setAuxiliares, forklift, setForklift, routeForklift, forkliftStops,
-    specialServices, setSpecialServices, inheritedLines, newDispatch, setNewDispatch, freightShares, setFreightShares, freightReason, setFreightReason,
+    specialServices, setSpecialServices, inheritedLines, newDispatch, setNewDispatch, freightShares, setFreightShares, occupancy, setOccupancy, freightReason, setFreightReason,
     notes, setNotes, cubicaje, setCubicaje, stockCorte, currentEligibility, selectedServices, selectedDates, customerPickup, selectedDriver, selectedVehicle,
     occupiedAssignment, openRouteAddition, internalService, ownInternalOnly, routeFreight, serviceShare, allocationMatches, referentialFreight, freightNeedsReason,
     costedOT, terceroFreightMissing, freightMissing, mixedOT, capacityKg, capacityM3, declaredKg, late, checks, blockers, canAddService,

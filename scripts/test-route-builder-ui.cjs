@@ -103,6 +103,9 @@ test('five steps: blocked advance, mandatory freight, stop order, late departure
  assert.ok(rb.checks.some(c => c.key === 'flete-tercero' && c.level === 'block'))
  await act(async () => byLabel(view, 'Completar tercero').props.onClick())
  await act(async () => byLabel(view, 'Flete pactado con el proveedor').props.onChange({ target: { value: '650' } }))
+ // FR-DT.004: el % de ocupación por parada es obligatorio con guía
+ assert.ok(rb.checks.some(c => c.key === 'ocupacion' && c.level === 'block'))
+ await act(async () => rb.setOccupancy(Object.fromEntries(rb.selectedServices.map(r => [r.id, '40']))))
  assert.ok(!rb.checks.some(c => c.step === 2 && c.level === 'block'), JSON.stringify(rb.checks))
  await submit(view); assert.equal(rb.step, 3)
  await submit(view); assert.equal(rb.step, 4)

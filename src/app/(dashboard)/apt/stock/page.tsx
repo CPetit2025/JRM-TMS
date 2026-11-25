@@ -13,8 +13,7 @@ import { KINDS, KIND_LABEL, fmtN, fmtPeso, fmtQty } from '@/lib/inventario/forma
 import type { AptAlmacen, InvKind, InvStockFilters } from '@/lib/inventario/types'
 import { fmtDate } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
-
-const PAGE = 100
+import { TablePagination } from '@/components/ui/table-pagination'
 
 // Stock disponible al corte por bodega · producto · lote: libre (sin contrato) o comprometido (lote de una OT)
 export default function InventarioStockPage() {
@@ -24,15 +23,16 @@ export default function InventarioStockPage() {
     estado: (sp.get('estado') ?? '') as InvStockFilters['estado'], min_dias: sp.get('min_dias') ?? '', orden: (sp.get('orden') ?? 'kg') as InvStockFilters['orden'] })
   const [applied, setApplied] = useState(draft)
   const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
   const cats = useInvQuery('cats', () => invApi.catalogs())
   // En el APT la lista de bodegas se limita a 647 · 540 · ST; «Almacén» agrupa sus bodegas
   const bodegas = useMemo(() => (cats.data?.bodegas ?? []).filter(b => !apt || aptAlmacen(b.code)), [cats.data, apt])
   const almacenBodegas = useMemo(() => (apt && applied.almacen ? bodegas.filter(b => aptAlmacen(b.code) === applied.almacen).map(b => b.code) : []), [apt, applied.almacen, bodegas])
   const filters: InvStockFilters = useMemo(() => ({
     q: applied.q || undefined, bodegas: applied.bodega && (!apt || aptAlmacen(applied.bodega)) ? [applied.bodega] : almacenBodegas, kinds: applied.kind ? [applied.kind] : [],
-    estado: applied.estado || '', min_dias: applied.min_dias ? Number(applied.min_dias) : 0, orden: applied.orden, limit: PAGE, offset: page * PAGE,
+    estado: applied.estado || '', min_dias: applied.min_dias ? Number(applied.min_dias) : 0, orden: applied.orden, limit: pageSize, offset: page * pageSize,
     ...(apt ? { ambito: 'apt' as const } : {}),
-  }), [applied, page, apt, almacenBodegas])
+  }), [applied, page, pageSize, apt, almacenBodegas])
   // Con «Almacén» se espera la lista de bodegas para no mostrar un instante todo el APT
   const waiting = apt && !!applied.almacen && !cats.data
   const q = useInvQuery(`stock|${JSON.stringify(filters)}|${waiting}`, () => (waiting ? new Promise<never>(() => {}) : invApi.stock(filters)))
@@ -96,9 +96,9 @@ export default function InventarioStockPage() {
           <KpiCard label="Comprometido" value={fmtPeso(d.totales.kg_comprometido)} tone="warn" hint="Lote de una OT / subcontrato" />
           <KpiCard label="Con saldo inferido" value={fmtN(d.totales.claves_inferidas)} unit="claves" tone={d.totales.claves_inferidas ? 'warn' : 'ok'} hint={`${fmtN(d.totales.claves_sin_peso)} sin peso (solo cantidad)`} />
         </div>
-        <ChartCard title="Detalle del stock" subtitle={`${fmtN(d.total)} productos·lote · página ${page + 1} de ${Math.max(1, Math.ceil(d.total / PAGE))}`}
+        <ChartCard title="Detalle del stock" subtitle={`${fmtN(d.total)} productos·lote`}
           info="El saldo resulta de aplicar las salidas a los ingresos más antiguos (FIFO) por bodega, producto y lote. «Inferido» es saldo anterior a los datos cargados que no viene de una foto de stock.">
-          <Table empty={!d.filas.length} head={<tr><th className={th}>Bodega</th><th className={th}>Producto</th><th className={th}>Lote / OT</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Ingreso</th><th className={th}>En bodega</th><th className={th}>Desde origen</th></tr>}>
+          <Table paginate={false} empty={!d.filas.length} head={<tr><th className={th}>Bodega</th><th className={th}>Producto</th><th className={th}>Lote / OT</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Ingreso</th><th className={th}>En bodega</th><th className={th}>Desde origen</th></tr>}>
             {d.filas.map(r => <tr key={`${r.bodega}|${r.producto}|${r.lote}`} className="hover:bg-slate-50">
               <td className={td}><p className="font-semibold text-slate-800">{r.bodega}</p>{apt ? <AlmacenTag almacen={aptAlmacen(r.bodega)} /> : <KindBadge kind={r.kind} />}</td>
               <td className={td}><p className="font-mono text-[11px] text-slate-500">{r.producto}</p><p className="max-w-80 text-slate-800">{r.glosa ?? '—'}</p></td>
@@ -114,10 +114,7 @@ export default function InventarioStockPage() {
               <td className={td}><DiasPill dias={r.dias_origen} title={r.fecha_origen ? `Origen: ${fmtDate(r.fecha_origen)}` : 'Origen desconocido'} /></td>
             </tr>)}
           </Table>
-          <div className="mt-3 flex items-center justify-end gap-2 text-xs">
-            <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)} className="min-h-9 rounded-lg border border-slate-300 px-3 disabled:opacity-40">Anterior</button>
-            <button type="button" disabled={(page + 1) * PAGE >= d.total} onClick={() => setPage(p => p + 1)} className="min-h-9 rounded-lg border border-slate-300 px-3 disabled:opacity-40">Siguiente</button>
-          </div>
+          <TablePagination compact total={d.total} page={page + 1} pageSize={pageSize} itemLabel="productos·lote" onPageChange={p => setPage(p - 1)} onPageSizeChange={s => { setPageSize(s); setPage(0) }} />
         </ChartCard>
       </>}
     </div>

@@ -6,6 +6,7 @@ import { useActiveTrip } from '@/contexts/ActiveTripContext'
 import { DesempenoConductorCard } from '@/components/driver/DesempenoConductorCard'
 import { BatteryOptimizationCard } from '@/components/driver/BatteryOptimizationCard'
 import { HheeConductorCard } from '@/components/driver/HheeConductorCard'
+import { WorkdayCloseAlert } from '@/components/driver/WorkdayCloseAlert'
 
 function greeting() {
   const hour = new Date().getHours()
@@ -37,6 +38,8 @@ export default function OperationalHome() {
     </section>
 
     {error && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><b>Información parcialmente disponible.</b> Pulsa actualizar. Si continúa, informa a soporte.</section>}
+
+    {driver && <WorkdayCloseAlert />}
 
     <BatteryOptimizationCard />
 

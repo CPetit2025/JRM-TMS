@@ -9,6 +9,8 @@ import { nativeRouteTracker } from '@/lib/native-route-tracker'
 import { readRouteQueue, routeQueueKey, syncRoutePoints, saveOfflineAction, syncOfflineActions } from '@/lib/route-point-sync'
 import { useActiveTrip, type ActiveTrip, type ActiveTripContextValue, type TripStop } from '@/contexts/ActiveTripContext'
 import { DriverDelivery } from '@/components/delivery/DriverDelivery'
+import { RouteIncidents } from '@/components/delivery/RouteIncidents'
+import { TripOdometer } from '@/components/delivery/TripOdometer'
 import { TripDocuments } from '@/components/evidence/TripDocuments'
 import { WmsDepartureNotice } from '@/components/despacho/WmsRelease'
 
@@ -24,6 +26,7 @@ export default function RutaActivaPage() {
   const [activeStep, setActiveStep] = useState(0)
   const [processing, setProcessing] = useState(false)
   const [wmsBlocked, setWmsBlocked] = useState(false)
+  const [startOdoReady, setStartOdoReady] = useState(false), [endOdoReady, setEndOdoReady] = useState(false)
 
   const supabase = useMemo(() => createClient(), [])
   const { driver: contextDriver, user, trip, loading: contextLoading, refresh } = useActiveTrip()
@@ -260,9 +263,10 @@ export default function RutaActivaPage() {
           <h3 className="text-lg font-bold text-slate-800 mb-2">Ruta Programada</h3>
           <p className="text-slate-500 text-sm mb-6">Usted tiene {dispatch.dispatch_requests?.length || 0} paradas asignadas. Presione el botón para iniciar la ruta y permitir el registro de las entregas.</p>
           <div className="mb-4 empty:hidden"><WmsDepartureNotice dispatchId={dispatch.id} onBlocked={setWmsBlocked} /></div>
+          {user && <div className="mb-4"><TripOdometer dispatchId={dispatch.id} userId={user.id} kind="SALIDA" onReady={setStartOdoReady} /></div>}
           <button
             onClick={handleIniciarRuta}
-            disabled={processing || wmsBlocked}
+            disabled={processing || wmsBlocked || !startOdoReady}
             className="w-full bg-[#002855] text-white py-3 rounded-xl font-bold shadow hover:bg-[#001d3d] flex justify-center items-center gap-2 disabled:opacity-70"
           >
             {processing ? <Loader2 className="w-5 h-5 animate-spin" /> : "INICIAR RUTA"}
@@ -334,6 +338,11 @@ export default function RutaActivaPage() {
         </div>
       )}
 
+      {['EN RUTA', 'EN_CURSO', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(dispatch.status) && <a href="/app/gastos" className="mt-6 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 font-semibold text-violet-900">
+        <FileText className="h-4 w-4" aria-hidden />Registrar gasto del viaje (combustible, peaje, viático)</a>}
+      {['EN RUTA', 'EN_CURSO', 'ESPERANDO_AUTORIZACION', 'RETORNO'].includes(dispatch.status) && <div className="mt-6"><RouteIncidents dispatchId={dispatch.id}
+        stops={(dispatch.dispatch_requests || []).map(r => ({ id: r.transport_request_id, label: `${r.ot_code ? `OT ${r.ot_code}` : r.transport_requests?.request_number || 'Parada'} · ${r.party_name || ''}` }))} /></div>}
+
       {/* Fin de ruta - Esperando Autorización */}
       {dispatch.status === 'EN RUTA' && activeStep >= (dispatch.dispatch_requests?.length || 0) && (
         <div className="mt-8 bg-green-50 border border-green-200 p-6 rounded-xl text-center">
@@ -377,7 +386,8 @@ export default function RutaActivaPage() {
           </div>
           <h2 className="text-xl font-bold text-blue-900 mb-2">Retorno Autorizado</h2>
           <p className="text-sm text-blue-700 mb-6">Puede retornar a Base. Conduzca con cuidado.</p>
-          <button onClick={handleCompleteReturn} disabled={processing}
+          {user && <div className="mb-3"><TripOdometer dispatchId={dispatch.id} userId={user.id} kind="LLEGADA" onReady={setEndOdoReady} /></div>}
+          <button onClick={handleCompleteReturn} disabled={processing || !endOdoReady}
             className="w-full mb-3 bg-[#002855] text-white px-6 py-3 rounded-xl font-bold disabled:opacity-50">
             {processing ? 'Sincronizando GPS...' : 'Confirmar llegada a base'}
           </button>

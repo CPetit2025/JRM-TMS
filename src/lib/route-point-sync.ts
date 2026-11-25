@@ -26,6 +26,7 @@ export type OfflineAction = {
   retry_count: number
   status: 'pending' | 'error'
   last_error?: string
+  last_code?: string
 }
 
 export function readRouteQueue(): RoutePoint[] {
@@ -58,6 +59,8 @@ export function saveOfflineAction(type: string, payload: Record<string, unknown>
 
 // P0001: regla del servidor (orden, ruta cerrada, plazo); 42501: RLS; 23505/23502/23514/22P02: datos inválidos o repetidos
 const PERMANENT_POINT_CODES = new Set(['P0001', '42501', '23505', '23502', '23514', '22P02'])
+// Rechazo definitivo del servidor (regla o dato inválido): reintentar no sirve; un error de red sí se reintenta
+export const isPermanentSyncError = (a: OfflineAction) => a.status === 'error' && PERMANENT_POINT_CODES.has(a.last_code || '')
 function permanentPointError(error: { code?: string; message?: string }) {
   return PERMANENT_POINT_CODES.has(error.code || '') || /deben llegar en orden|sin conductor activo|fuera de rango|no autorizado|row-level security/i.test(error.message || '')
 }
@@ -197,6 +200,12 @@ export function syncOfflineActions(): Promise<number> {
           })
           if (error) throw error
           if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó el rechazo')
+          // Rechazo parcial: líneas no entregadas con su cantidad (los guardados por versiones anteriores no las traen)
+          if (action.payload.kind === 'PARCIAL' && Array.isArray(action.payload.missing_lines) && action.payload.missing_lines.length) {
+            const { data: lines, error: linesError } = await supabase.rpc('delivery_rejection_set_lines', { p_operation: action.id, p_lines: action.payload.missing_lines })
+            if (linesError) throw linesError
+            if (!lines?.success) throw new Error('El servidor no confirmó las líneas no entregadas')
+          }
         } else if (action.type === 'complete_dispatch_stop') {
           // If the payload contains a base64 photo, we must upload it first.
           const dispatchId = String(action.payload.p_dispatch_id || '')
@@ -235,6 +244,38 @@ export function syncOfflineActions(): Promise<number> {
             p_payload: { dispatch_id: String(action.payload.p_dispatch_id || '') },
           })
           if (error) throw error
+        } else if (action.type === 'route_stop_wait') {
+          // Inicio o fin de una espera: el id de la espera identifica la operación en el servidor
+          const p = action.payload
+          const { error } = await supabase.rpc('route_stop_wait', { p_id: p.wait_id, p_dispatch: p.dispatch_id, p_request: p.request_id,
+            p_reason: p.reason ?? null, p_note: p.note ?? null, p_started_at: p.started_at, p_ended_at: p.ended_at ?? null })
+          if (error) throw error
+        } else if (action.type === 'dispatch_odometer') {
+          // Odómetro de salida o llegada del viaje: sube la foto del tablero si la hay (es opcional) y registra la lectura
+          const { data: auth } = await supabase.auth.getUser()
+          if (!auth.user || auth.user.id !== action.payload.user_id) throw new Error('La sesión no corresponde a esta lectura')
+          let path: string | null = null
+          if (action.payload.photo_base64 != null) {
+            const kind = photoKind(action.payload.photo_base64)
+            if (!kind) throw new Error('Foto del odómetro no válida: use JPG, PNG o WEBP')
+            path = `${auth.user.id}/${action.payload.dispatch_id}/odometro/${action.id}.${kind.ext}`
+            const blob = await (await fetch(String(action.payload.photo_base64))).blob()
+            const { error: upError } = await supabase.storage.from('driver_evidence').upload(path, blob, { upsert: false, contentType: kind.type })
+            if (upError && String(upError.statusCode) !== '409') throw upError
+          }
+          const { error } = await supabase.rpc('dispatch_record_odometer', { p_dispatch: action.payload.dispatch_id, p_kind: action.payload.kind,
+            p_value: action.payload.value, p_photo: path, p_at: action.payload.at })
+          if (error) throw error
+        } else if (action.type === 'delivery_depart') {
+          const p = action.payload
+          const { error } = await supabase.rpc('delivery_depart_at', { p_dispatch: p.dispatch_id, p_request: p.request_id, p_at: p.at })
+          if (error) throw error
+        } else if (action.type === 'route_incident_report') {
+          const p = action.payload
+          const { error } = await supabase.rpc('route_incident_report', { p_id: action.id, p_dispatch: p.dispatch_id, p_request: p.request_id ?? null,
+            p_category: p.category, p_description: p.description, p_reported_cause: p.reported_cause ?? null, p_occurred_at: p.occurred_at,
+            p_lat: p.latitude ?? null, p_lon: p.longitude ?? null })
+          if (error) throw error
         } else {
           throw new Error(`Acción offline no soportada: ${action.type}`)
         }
@@ -249,6 +290,7 @@ export function syncOfflineActions(): Promise<number> {
         if (target) {
           target.retry_count++
           target.status = 'error'
+          target.last_code = err && typeof err === 'object' && 'code' in err ? String(err.code) : undefined
           target.last_error = err && typeof err === 'object' && 'message' in err ? String(err.message).slice(0, 300) : 'Error de sincronización'
           localStorage.setItem(actionQueueKey, JSON.stringify(currentQueue))
         }

@@ -10,7 +10,7 @@ import { errorMessage } from '@/lib/caja'
 // Liberación del almacén (picking + auditoría en el WMS). La base bloquea la SALIDA de despachos APT sin liberación
 // (wms_release_departure_guard); aquí solo se muestra el estado y la excepción del supervisor.
 export type WmsRelease = {
-  id: string; request_number: string; required: boolean; blocked: boolean; state?: string; label?: string
+  id: string; request_number: string; required: boolean; blocked: boolean; alert?: boolean; mode?: string; state?: string; label?: string
   released_at?: string | null; override?: { reason: string; at: string; by: string } | null
 }
 type Status = { items: Record<string, WmsRelease>; canOverride: boolean; reload: () => void }
@@ -54,10 +54,11 @@ const TONE: Record<string, string> = {
 export function WmsReleaseBadge({ item, canOverride, onChanged }: { item?: WmsRelease; canOverride?: boolean; onChanged?: () => void }) {
   const [open, setOpen] = useState(false)
   if (!item?.required) return null
-  const text = item.override ? 'Salida autorizada sin WMS' : item.label
+  const text = item.override ? 'Salida autorizada sin WMS' : item.alert && !item.blocked ? `${item.label} · solo alerta` : item.label
   const tone = item.override ? 'bg-amber-50 text-amber-800 ring-amber-200' : TONE[item.state || ''] || 'bg-slate-100 text-slate-700 ring-slate-200'
   const title = item.override ? `Excepción de ${item.override.by}: ${item.override.reason}`
-    : item.blocked ? 'Se puede asignar y programar; la salida espera la liberación del almacén (picking y auditoría en el WMS).' : 'Liberada por el almacén'
+    : item.blocked ? 'Se puede asignar y programar; la salida espera la liberación del almacén (picking y auditoría en el WMS).'
+    : item.alert ? 'Modo «Solo alertar»: la salida no se bloquea, pero queda registrada como salida sin liberación del WMS.' : 'Liberada por el almacén'
   return <>
     <span className={`mt-0.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${tone}`} title={title}>
       {item.blocked ? <PackageX aria-hidden className="h-3 w-3" /> : <PackageCheck aria-hidden className="h-3 w-3" />}WMS: {text}
@@ -100,7 +101,12 @@ function WmsOverrideModal({ item, onClose, onDone }: { item: WmsRelease; onClose
 export function WmsDepartureNotice({ dispatchId, onBlocked }: { dispatchId: string; onBlocked?: (blocked: boolean) => void }) {
   const { items, canOverride, reload } = useWmsRelease({ dispatch: dispatchId })
   const blocked = Object.values(items).filter(i => i.blocked)
+  const alerts = Object.values(items).filter(i => i.alert && !i.blocked)
   useEffect(() => { onBlocked?.(blocked.length > 0) }, [blocked.length, onBlocked])
+  if (!blocked.length && alerts.length) return <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-sm text-amber-900">
+    <p className="flex items-center gap-2 font-semibold"><PackageX aria-hidden className="h-4 w-4" />Salida sin liberación del almacén (modo «Solo alertar»)</p>
+    <ul className="mt-1 space-y-1">{alerts.map(i => <li key={i.id}>{i.request_number}: Estado WMS {i.label}. La salida queda registrada como alerta.</li>)}</ul>
+  </div>
   if (!blocked.length) return null
   return <div role="status" className="rounded-lg border border-red-200 bg-red-50 p-3 text-left text-sm text-red-800">
     <p className="flex items-center gap-2 font-semibold"><PackageX aria-hidden className="h-4 w-4" />Salida bloqueada: falta la liberación del almacén</p>
@@ -110,4 +116,49 @@ export function WmsDepartureNotice({ dispatchId, onBlocked }: { dispatchId: stri
     </ul>
     <button type="button" onClick={reload} className="mt-2 min-h-11 rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-red-800 hover:bg-red-100">Actualizar estado</button>
   </div>
+}
+
+type ModeInfo = { mode: string; can_change: boolean; alerts_30d: number; log: { mode: string; previous_mode: string | null; reason: string; at: string; by: string | null }[] }
+const MODE_LABEL: Record<string, string> = { BLOQUEAR: 'Bloquear salida', ALERTAR: 'Solo alertar' }
+
+/** Modo de salida sin liberación del WMS (decisión 10): «Bloquear salida» o «Solo alertar», con historial de cambios. */
+export function WmsReleaseModeControl() {
+  const db = useMemo(() => createClient(), [])
+  const [info, setInfo] = useState<ModeInfo | null>(null)
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = useCallback(() => { void Promise.resolve(db.rpc('wms_release_mode_info')).then(({ data }) => { if (data?.success) setInfo(data as ModeInfo) }) }, [db])
+  useEffect(() => { load() }, [load])
+  if (!info) return null
+  const next = info.mode === 'BLOQUEAR' ? 'ALERTAR' : 'BLOQUEAR'
+  const save = async () => {
+    setBusy(true)
+    try {
+      const { data, error } = await db.rpc('wms_release_set_mode', { p_mode: next, p_reason: reason })
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.error || 'No se cambió el modo')
+      toast.success(`Salida sin WMS: ${MODE_LABEL[next]}`); setOpen(false); setReason(''); load()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return <>
+    <button type="button" onClick={() => setOpen(true)} title="Qué pasa con la salida de un despacho APT que el almacén aún no liberó"
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ring-1 ${info.mode === 'BLOQUEAR' ? 'bg-slate-50 text-slate-700 ring-slate-200' : 'bg-amber-50 text-amber-900 ring-amber-200'}`}>
+      <PackageX aria-hidden className="h-4 w-4" />Salida sin WMS: {MODE_LABEL[info.mode]}{info.alerts_30d > 0 ? ` · ${info.alerts_30d} alerta(s) en 30 días` : ''}
+    </button>
+    {open && <Modal isOpen onClose={() => setOpen(false)} title="Salida sin liberación del WMS"
+      footer={info.can_change ? <div className="flex justify-end gap-2">
+        <button type="button" onClick={() => setOpen(false)} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold">Cerrar</button>
+        <button type="button" disabled={busy || reason.trim().length < 10} onClick={() => void save()} className="min-h-11 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50">Cambiar a «{MODE_LABEL[next]}»</button>
+      </div> : undefined}>
+      <div className="space-y-3 text-sm">
+        <p>Modo vigente: <b>{MODE_LABEL[info.mode]}</b>. {info.mode === 'BLOQUEAR' ? 'Un despacho APT no sale hasta que el almacén libere (o el supervisor autorice una excepción).' : 'La salida no se bloquea; cada salida sin liberación queda registrada como alerta.'}</p>
+        {info.can_change && <label className="block font-medium">Motivo del cambio (mínimo 10 caracteres)
+          <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} maxLength={500} className="mt-1 w-full rounded-lg border border-slate-300 p-3" /></label>}
+        <div><p className="font-semibold">Historial</p>
+          {info.log.length === 0 ? <p className="text-slate-500">Sin cambios: el modo inicial es «Bloquear salida».</p>
+            : <ul className="mt-1 space-y-1 text-xs text-slate-700">{info.log.map((l, i) => <li key={i}><b>{MODE_LABEL[l.mode]}</b> · {l.by || '—'} · {new Date(l.at).toLocaleString('es-PE', { timeZone: 'America/Lima' })} — {l.reason}</li>)}</ul>}</div>
+      </div>
+    </Modal>}
+  </>
 }

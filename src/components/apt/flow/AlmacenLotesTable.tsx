@@ -1,9 +1,11 @@
 'use client'
 import { DataTable } from '@/components/ui/data-table'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronLeft, ChevronRight, FileSpreadsheet, Search } from 'lucide-react'
+import { AlertTriangle, ArrowDown, ArrowUp, FileSpreadsheet, Search } from 'lucide-react'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { fmtDate, fmtDec1, fmtInt, fmtTn } from '@/lib/apt/format'
 import { ALMACEN_COLOR } from '@/lib/apt/flowColors'
@@ -11,7 +13,7 @@ import { ALMACEN_LABEL, type FlowAlmacen, type FlowGlosaSaldo, type FlowLoteSald
 import { traceHref } from '@/lib/apt/useFlowFilters'
 import { InlineBar } from '@/components/apt/ui'
 
-// Saldo por almacén, por lote o por glosa: búsqueda, orden, paginación de 25 y exportación a Excel.
+// Saldo por almacén, por lote o por glosa: búsqueda, orden, paginación 25/50/100 y exportación a Excel.
 
 export type StockView = 'lote' | 'glosa'
 type Row = {
@@ -20,7 +22,6 @@ type Row = {
   excel: Record<string, unknown>
 }
 type SortKey = 'almacen' | 'nombre' | 'cliente' | 'lotes' | 'tn' | 'edad_pond' | 'dias_almacen_pond' | 'tn_dias' | 'inicial_tn'
-const PAGE = 25
 const MEASURES: Array<{ k: SortKey; label: string; num?: boolean; title?: string }> = [
   { k: 'tn', label: 'TN', num: true },
   { k: 'edad_pond', label: 'Edad pond.', num: true, title: 'Días desde la producción, ponderados por TN' },
@@ -57,7 +58,6 @@ export function AlmacenLotesTable({ rows: source, view = 'lote', alertDays, cuto
   const unit = view === 'glosa' ? 'glosas' : 'lotes'
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<{ k: SortKey; desc: boolean }>({ k: 'tn_dias', desc: true })
-  const [page, setPage] = useState(0)
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -72,14 +72,12 @@ export function AlmacenLotesTable({ rows: source, view = 'lote', alertDays, cuto
     })
   }, [rows, q, sort])
 
-  const pages = Math.max(1, Math.ceil(filtered.length / PAGE))
-  const cur = Math.min(page, pages - 1)
-  const slice = filtered.slice(cur * PAGE, cur * PAGE + PAGE)
+  const pg = usePagination(filtered, 'apt-almacen-saldos')
   const maxTxd = Math.max(0, ...filtered.map(r => Number(r.tn_dias || 0)))
   const totTn = filtered.reduce((s, r) => s + Number(r.tn), 0)
   const alertas = filtered.filter(r => r.alerta).length
 
-  const toggleSort = (k: SortKey) => { setSort(s => (s.k === k ? { k, desc: !s.desc } : { k, desc: k !== 'almacen' && k !== 'nombre' && k !== 'cliente' })); setPage(0) }
+  const toggleSort = (k: SortKey) => { setSort(s => (s.k === k ? { k, desc: !s.desc } : { k, desc: k !== 'almacen' && k !== 'nombre' && k !== 'cliente' })); pg.setPage(1) }
   const exportXlsx = () => exportAptXlsx(`APT_flujo_${unit}_con_saldo_${cutoff}`, {
     [view === 'glosa' ? 'Saldo por glosa' : 'Lotes con saldo']: filtered.map(r => ({
       Almacén: ALMACEN_LABEL[r.almacen], ...r.excel,
@@ -93,7 +91,7 @@ export function AlmacenLotesTable({ rows: source, view = 'lote', alertDays, cuto
       <div className="flex flex-wrap items-center gap-2 px-3 pb-3 pt-1 sm:px-1">
         <div className="relative min-w-[12rem] flex-1 sm:max-w-xs">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={e => { setQ(e.target.value); setPage(0) }} placeholder={view === 'glosa' ? 'Buscar glosa o almacén…' : 'Buscar lote, cliente o almacén…'}
+          <input value={q} onChange={e => { setQ(e.target.value); pg.setPage(1) }} placeholder={view === 'glosa' ? 'Buscar glosa o almacén…' : 'Buscar lote, cliente o almacén…'}
             className="h-9 w-full rounded-lg border border-slate-200 pl-8 pr-2 text-xs outline-none focus:border-[#002855]" />
         </div>
         <p className="text-xs text-slate-500">
@@ -119,7 +117,7 @@ export function AlmacenLotesTable({ rows: source, view = 'lote', alertDays, cuto
             </tr>
           </thead>
           <tbody>
-            {slice.map(r => (
+            {pg.pageRows.map(r => (
               <tr key={r.key} className={`border-b border-slate-50 hover:bg-slate-50/80 ${r.alerta ? 'bg-red-50/30' : ''}`}>
                 <td className="px-3 py-2">
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-bold" style={{ color: ALMACEN_COLOR[r.almacen] }}>
@@ -155,23 +153,13 @@ export function AlmacenLotesTable({ rows: source, view = 'lote', alertDays, cuto
                 </td>
               </tr>
             ))}
-            {!slice.length && (
+            {!pg.total && (
               <tr><td colSpan={cols.length + 1} className="px-3 py-10 text-center text-sm text-slate-400">{view === 'glosa' ? 'Ninguna glosa' : 'Ningún lote'} coincide con la búsqueda.</td></tr>
             )}
           </tbody>
         </DataTable>
       </div>
-      {pages > 1 && (
-        <div className="flex items-center justify-between gap-2 px-3 pt-3 text-xs text-slate-500 sm:px-1">
-          <span>Página {cur + 1} de {pages} · {fmtInt(cur * PAGE + 1)}–{fmtInt(Math.min(filtered.length, cur * PAGE + PAGE))} de {fmtInt(filtered.length)}</span>
-          <div className="flex gap-1">
-            <button disabled={cur === 0} onClick={() => setPage(cur - 1)} aria-label="Anterior"
-              className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button>
-            <button disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} aria-label="Siguiente"
-              className="rounded-lg border border-slate-200 p-1.5 hover:bg-slate-50 disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button>
-          </div>
-        </div>
-      )}
+      {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
     </div>
   )
 }

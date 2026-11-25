@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { InvParsedPart } from './parse'
-import type { InvAptResumen, InvContrato, InvContratoLineas, InvContratos, InvDwellDim, InvDwellDimResult, InvKardex, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
+import type { InvAptResumen, InvContrato, InvContratoLineas, InvContratos, InvContratosProducto, InvDwellDim, InvDwellDimResult, InvEstadiaContratos, InvKardex, InvOcultos, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
 
 // Acceso a las funciones public.inv_* (inventario multi-almacén). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -26,11 +26,15 @@ export const invApi = {
   flow: (f: { desde?: string; hasta?: string }) => call<InvFlow>('inv_flow', { p: f }),
   trace: (q: string) => call<InvTrace>('inv_trace', { p_q: q }),
   contratos: () => call<InvContratos>('inv_contratos'),
+  contratosProducto: (estado: string) => call<InvContratosProducto>('inv_contratos_producto', { p_estado: estado }),
   contrato: (q: string) => call<InvContrato>('inv_contrato', { p_q: q }),
   contratoLineas: (q: string) => call<InvContratoLineas>('inv_contrato_lineas', { p_q: q }),
   aptResumen: () => call<InvAptResumen>('inv_apt_resumen'),
   dwellDim: (f: { dim: InvDwellDim; ambito?: 'apt'; desde?: string; hasta?: string; ot?: string; q?: string; limit?: number }) =>
     call<InvDwellDimResult>('inv_dwell_dim', { p: f }),
+  estadiaContratos: () => call<InvEstadiaContratos>('inv_estadia_contratos'),
+  ocultos: () => call<InvOcultos>('inv_ocultos_list'),
+  saveOculto: (p: { codigo: string; motivo?: string; ocultar: boolean }) => call<{ success: true; codigo: string }>('inv_ocultos_save', { p }),
   kardex: (q: string, producto?: string) => call<InvKardex>('inv_contrato_kardex', { p_q: q, p_producto: producto || null }),
   catalogs: () => call<InvCatalogs>('inv_catalogs'),
   verify: () => call<InvVerify>('inv_verify'),

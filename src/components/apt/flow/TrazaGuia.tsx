@@ -1,6 +1,8 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { ArrowRight, Factory, FileText, Package, Warehouse } from 'lucide-react'
 import { fmtDate, fmtDias, fmtInt, fmtPct, fmtTn } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
@@ -14,7 +16,6 @@ import { AlmacenBadge, HATCH_BG, OrigenBadge, SectionTitle, TmsCard, TraceLink, 
 // Ficha de una guía: de dónde vino cada línea (producción o stock previo), por qué almacenes pasó y cuántos días tardó
 
 type Linea = FlowTraceGuia['lineas'][number]
-const LIMIT = 40
 
 // Peso medio de unos días ponderados por TN (solo las líneas con dato)
 function pond(rows: Linea[], key: 'dias_total' | 'dias_previo' | 'dias_final') {
@@ -94,7 +95,6 @@ export function Journey({ l }: { l: Linea }) {
 }
 
 export function TrazaGuia({ d }: { d: FlowTraceGuia }) {
-  const [all, setAll] = useState(false)
   const g = d.guia
   const lineas = d.lineas
   const porOrigen = useMemo(() => {
@@ -105,7 +105,7 @@ export function TrazaGuia({ d }: { d: FlowTraceGuia }) {
   const totLineas = porOrigen.reduce((s, r) => s + r.tn, 0)
   const dTotal = pond(lineas, 'dias_total'), dPrevio = pond(lineas, 'dias_previo'), dFinal = pond(lineas, 'dias_final')
   const iniTn = porOrigen.filter(r => isInicial(r.origen)).reduce((s, r) => s + r.tn, 0)
-  const shown = all ? lineas : lineas.slice(0, LIMIT)
+  const pg = usePagination(lineas, 'apt-traza-guia-lineas')
 
   const doExport = () => exportAptXlsx(`APT_traza_guia_${g.documento}`, {
     Lineas: lineas.map(l => ({
@@ -169,7 +169,7 @@ export function TrazaGuia({ d }: { d: FlowTraceGuia }) {
           <ExportButton onClick={doExport} disabled={!lineas.length} />
         </header>
         <ul className="divide-y divide-slate-100">
-          {shown.map((l, i) => (
+          {pg.pageRows.map((l, i) => (
             <li key={i} className="grid gap-2 px-4 py-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-center">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -186,13 +186,7 @@ export function TrazaGuia({ d }: { d: FlowTraceGuia }) {
             </li>
           ))}
         </ul>
-        {lineas.length > LIMIT && (
-          <div className="border-t border-slate-100 p-2 text-center">
-            <button type="button" onClick={() => setAll(a => !a)} className="text-xs font-bold text-[#002855] hover:underline">
-              {all ? 'Mostrar menos' : `Ver las ${fmtInt(lineas.length)} líneas`}
-            </button>
-          </div>
-        )}
+        {pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}
         {!lineas.length && <p className="p-6 text-center text-sm text-slate-500">La guía no tiene líneas trazadas.</p>}
       </section>
     </div>

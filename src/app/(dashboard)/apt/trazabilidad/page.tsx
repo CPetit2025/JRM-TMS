@@ -77,7 +77,7 @@ export default function InventarioTrazabilidadPage() {
           </ChartCard>
           {reasig.length > 0 && <ChartCard title="Reasignaciones de lote" subtitle="Traspasos donde el stock cambió de lote (p. ej. pernería o 540 asignados a un contrato)">
             <Table head={<tr><th className={th}>Fecha</th><th className={th}>Documento</th><th className={th}>Origen</th><th className={th}>Lote origen</th><th className={th} /><th className={th}>Destino</th><th className={th}>Lote destino</th><th className={`${th} text-right`}>Cantidad</th></tr>}>
-              {reasig.slice(0, 200).map(e => <tr key={`${e.out_id}-${e.in_id}`}>
+              {reasig.map(e => <tr key={`${e.out_id}-${e.in_id}`}>
                 <td className={td}>{fmtDate(e.fecha)}</td><td className={td}>{e.numero}</td><td className={td}>{e.origen}</td>
                 <td className={td}>{e.lote_origen ?? 'Sin lote'}</td><td className={td}><GitBranch className="h-3.5 w-3.5 text-slate-400" /></td>
                 <td className={td}>{e.destino}</td><td className={`${td} font-semibold`}>{e.lote_destino ?? 'Sin lote'}</td><td className={tdNum}>{fmtQty(e.qty)}</td>

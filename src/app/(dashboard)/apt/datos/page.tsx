@@ -9,6 +9,7 @@ import { VerificationPanel } from '@/components/inventario/VerificationPanel'
 import { syncLegacyApt } from '@/lib/inventario/legacy'
 import { syncAnalitica, syncPesoServicios } from '@/lib/inventario/vinculacion'
 import { VinculacionPanel } from '@/components/inventario/VinculacionPanel'
+import { OcultosPanel } from '@/components/inventario/OcultosPanel'
 import { invApi, notifyInvUpdated, recalcular, resetUpload as uploadsReset, uploadPart } from '@/lib/inventario/api'
 import { CLASES, CLASE_LABEL, KINDS, KIND_LABEL, fmtN, fmtPeso } from '@/lib/inventario/format'
 import { INV_SIDE_LABEL, parseInventoryWorkbooks, type InvParseResult } from '@/lib/inventario/parse'
@@ -286,6 +287,7 @@ export default function InventarioDatosPage() {
           </Table>
         </ChartCard>
       </>}
+      <OcultosPanel />
       {cats.error && <ErrorBlock message="No se pudieron consultar los catálogos del inventario." onRetry={cats.reload} />}
       {cats.data && <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <ChartCard title="Bodegas" subtitle="El tipo define la etapa en el flujo y qué se considera libre o comprometido" info="Las bodegas nuevas se clasifican solas por su nombre; corrija aquí si alguna quedó mal.">

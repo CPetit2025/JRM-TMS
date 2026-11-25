@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { Camera, Loader2, X } from 'lucide-react'
 import { deliveryPhoto, REJECTION_REASONS } from '@/lib/delivery'
 
-export type RejectionDraft = { operation: string; kind: 'TOTAL' | 'PARCIAL'; reason: string; note: string; files: File[] }
+export type MissingLine = { descripcion: string; cantidad: number; unidad: string }
+export type RejectionDraft = { operation: string; kind: 'TOTAL' | 'PARCIAL'; reason: string; note: string; files: File[]; lines: MissingLine[] }
 
 // «Rechazada en destino»: el conductor registra lo que pasó con motivo y fotos. El total cierra la parada sin guía y
 // avisa a Despacho; el parcial acompaña a la guía de lo que sí se entregó. Siempre pide confirmación antes de enviar.
@@ -12,6 +13,7 @@ export function RejectionForm({ busy, onSubmit, onCancel }: { busy?: boolean; on
   const [kind, setKind] = useState<'TOTAL' | 'PARCIAL'>('TOTAL')
   const [reason, setReason] = useState('')
   const [note, setNote] = useState('')
+  const [lines, setLines] = useState<{ descripcion: string; cantidad: string; unidad: string }[]>([{ descripcion: '', cantidad: '', unidad: 'UND' }])
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
   const [confirming, setConfirming] = useState(false)
@@ -30,8 +32,10 @@ export function RejectionForm({ busy, onSubmit, onCancel }: { busy?: boolean; on
     setFiles([...files, ...Array.from(incoming)]); changed()
   }
   const working = busy || preparing
+  const validLines = lines.filter(l => l.descripcion.trim().length >= 2 && Number(l.cantidad) > 0).map(l => ({ descripcion: l.descripcion.trim(), cantidad: Number(l.cantidad), unidad: l.unidad.trim() }))
   const validate = () => {
     if (!reason) return 'Seleccione el motivo del rechazo.'
+    if (kind === 'PARCIAL' && (!validLines.length || validLines.length !== lines.filter(l => l.descripcion.trim() || l.cantidad).length)) return 'Indique cada producto no entregado con su cantidad.'
     if ((reason === 'OTRO' || kind === 'PARCIAL') && note.trim().length < 5) return kind === 'PARCIAL' ? 'Detalle qué se rechazó (producto y cantidad).' : 'Detalle el motivo del rechazo.'
     if (!files.length) return 'Adjunte al menos una foto (mercadería, local o documento).'
     return ''
@@ -41,7 +45,7 @@ export function RejectionForm({ busy, onSubmit, onCancel }: { busy?: boolean; on
     try {
       const photos = await Promise.all(files.map(deliveryPhoto))
       if (photos.reduce((sum, photo) => sum + photo.size, 0) > 4 * 1024 * 1024) throw new Error('Las fotos superan 4 MB. Reduzca la cantidad o resolución.')
-      await onSubmit({ operation, kind, reason, note: note.trim(), files: photos })
+      await onSubmit({ operation, kind, reason, note: note.trim(), files: photos, lines: kind === 'PARCIAL' ? validLines : [] })
     } catch (err) { setError(err instanceof Error ? err.message : 'No se pudo registrar el rechazo.'); setConfirming(false) }
     finally { setPreparing(false) }
   }
@@ -56,6 +60,15 @@ export function RejectionForm({ busy, onSubmit, onCancel }: { busy?: boolean; on
     <label className="block text-sm">Motivo *<select value={reason} disabled={working} onChange={e => { setReason(e.target.value); changed() }} className="mt-1 w-full rounded-lg border bg-white p-3">
       <option value="">Seleccione…</option>{REJECTION_REASONS.map(r => <option key={r.code} value={r.code}>{r.label}</option>)}
     </select></label>
+    {kind === 'PARCIAL' && <fieldset className="space-y-2"><legend className="text-sm">Productos no entregados *</legend>
+      {lines.map((l, i) => <div key={i} className="grid grid-cols-[1fr_5rem_4rem_auto] gap-1">
+        <input aria-label={`Producto ${i + 1}`} placeholder="Producto" value={l.descripcion} disabled={working} onChange={e => { setLines(lines.map((x, j) => j === i ? { ...x, descripcion: e.target.value } : x)); changed() }} className="min-h-11 rounded-lg border bg-white px-2 text-sm" />
+        <input aria-label={`Cantidad ${i + 1}`} placeholder="Cant." type="number" min="0" step="any" inputMode="decimal" value={l.cantidad} disabled={working} onChange={e => { setLines(lines.map((x, j) => j === i ? { ...x, cantidad: e.target.value } : x)); changed() }} className="min-h-11 rounded-lg border bg-white px-2 text-sm" />
+        <input aria-label={`Unidad ${i + 1}`} value={l.unidad} disabled={working} onChange={e => { setLines(lines.map((x, j) => j === i ? { ...x, unidad: e.target.value } : x)); changed() }} className="min-h-11 rounded-lg border bg-white px-2 text-sm" />
+        <button type="button" aria-label={`Quitar producto ${i + 1}`} disabled={working || lines.length === 1} onClick={() => { setLines(lines.filter((_, j) => j !== i)); changed() }} className="min-h-11 rounded-lg border bg-white px-2"><X className="h-4 w-4" /></button>
+      </div>)}
+      {lines.length < 30 && <button type="button" disabled={working} onClick={() => setLines([...lines, { descripcion: '', cantidad: '', unidad: 'UND' }])} className="min-h-11 rounded-lg border bg-white px-3 text-sm">+ Otro producto</button>}
+    </fieldset>}
     <label className="block text-sm">{kind === 'PARCIAL' ? 'Qué se rechazó (producto y cantidad) *' : reason === 'OTRO' ? 'Detalle del motivo *' : 'Detalle (opcional)'}
       <textarea maxLength={1000} value={note} disabled={working} onChange={e => { setNote(e.target.value); changed() }} className="mt-1 w-full rounded-lg border bg-white p-3" rows={2} /></label>
     <div className="space-y-2">

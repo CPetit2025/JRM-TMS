@@ -6,6 +6,8 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { suggestClass } from '@/lib/apt-analitica/catalog'
 import { AREA_LABEL, CLASS_LABEL, type Area, type DocClass, type LinkKind, type LinkOrigin } from '@/lib/apt-analitica/types'
+import { TablePagination } from '@/components/ui/table-pagination'
+import { usePagination } from '@/lib/use-pagination'
 import { useAnalitica } from './context'
 import { Card, Empty, Notice, fmtDateTime, fmtNum } from './ui'
 
@@ -35,21 +37,25 @@ export function ConfigTab() {
     for (const b of meta?.bodegas_sin_area ?? []) if (!saved.has(b)) saved.set(b, { bodega: b, area: null, confirmed: false, note: null })
     return [...saved.values()].sort((a, b) => (a.area ? 0 : 1) - (b.area ? 0 : 1) || a.bodega.localeCompare(b.bodega))
   }, [meta])
+  const pgBodegas = usePagination(bodegas, 'apt-analitica-config-bodegas')
+  const pgClases = usePagination(classRows, 'apt-analitica-config-clases')
 
   return <div className="space-y-4">
     {!admin && <Notice>El mapeo de áreas, la clasificación de documentos, las equivalencias de unidades y la metodología solo los cambia un administrador (permiso apt-admin). Usted puede consultarlos.</Notice>}
     <Card title="Bodegas y áreas" subtitle="Bodega (mayúsculas, espacios simples) → área del análisis. Una asociación no confirmada se muestra como pendiente de confirmación del negocio.">
       <div className="max-h-96 overflow-auto"><table className="w-full min-w-[40rem] text-xs">
         <thead className="sticky top-0 bg-white"><tr className="text-left text-slate-600"><th className="py-1">Bodega</th><th>Área</th><th>Confirmada</th><th>Nota</th><th></th></tr></thead>
-        <tbody>{bodegas.map(a => <AreaRow key={a.bodega} row={a} admin={admin} onSave={(area, confirmed, note) => call('apa_area_set', { p_bodega: a.bodega, p_area: area, p_confirmed: confirmed, p_note: note }, 'Mapeo actualizado')} />)}</tbody>
+        <tbody>{pgBodegas.pageRows.map(a => <AreaRow key={a.bodega} row={a} admin={admin} onSave={(area, confirmed, note) => call('apa_area_set', { p_bodega: a.bodega, p_area: area, p_confirmed: confirmed, p_note: note }, 'Mapeo actualizado')} />)}</tbody>
       </table></div>
+      {pgBodegas.total > 25 && <TablePagination compact total={pgBodegas.total} page={pgBodegas.page} pageSize={pgBodegas.pageSize} onPageChange={pgBodegas.setPage} onPageSizeChange={pgBodegas.setPageSize} itemLabel="bodegas" />}
     </Card>
 
     <Card title="Clases de documento" subtitle="Define qué es producción, traspaso, despacho de ventas, consumo… Los traspasos no cuentan como producción ni ventas; un despacho no es una entrega.">
       <div className="max-h-96 overflow-auto"><table className="w-full min-w-[36rem] text-xs">
         <thead className="sticky top-0 bg-white"><tr className="text-left text-slate-600"><th className="py-1">TipoDocto</th><th>Clase</th><th>Estado</th><th></th></tr></thead>
-        <tbody>{classRows.map(c => <ClassRow key={c.tipo} row={c} admin={admin} onSave={(clase, confirmed) => call('apa_class_set', { p_tipo: c.tipo, p_clase: clase, p_confirmed: confirmed }, 'Clase actualizada')} />)}</tbody>
+        <tbody>{pgClases.pageRows.map(c => <ClassRow key={c.tipo} row={c} admin={admin} onSave={(clase, confirmed) => call('apa_class_set', { p_tipo: c.tipo, p_clase: clase, p_confirmed: confirmed }, 'Clase actualizada')} />)}</tbody>
       </table></div>
+      {pgClases.total > 25 && <TablePagination compact total={pgClases.total} page={pgClases.page} pageSize={pgClases.pageSize} onPageChange={pgClases.setPage} onPageSizeChange={pgClases.setPageSize} itemLabel="clases" />}
     </Card>
 
     <div className="grid gap-4 xl:grid-cols-2">
@@ -140,15 +146,16 @@ function Links({ operate, admin, call }: { operate: boolean; admin: boolean; cal
   const { meta } = useAnalitica()
   const [f, setF] = useState({ fromKind: 'LOTE' as LinkKind, fromRef: '', toKind: 'LOTE' as LinkKind, toRef: '', qty: '', unidad: '', origin: 'MANUAL' as LinkOrigin, rule: '', note: '' })
   const links = meta?.links ?? []
+  const pg = usePagination(links, 'apt-analitica-config-vinculos')
   return <Card title="Equivalencias de trazabilidad" subtitle="Lote origen → traspaso → lote/asignación destino → OT/pedido → despacho → recepción. Admite cantidades parciales, divisiones y consolidaciones (varios vínculos). Cada vínculo indica su origen y conserva historial.">
     {links.length === 0 ? <Empty title="Sin vínculos registrados">Los cambios de lote en traspasos aparecen como vínculos inferidos en Trazabilidad hasta que se registren aquí.</Empty>
-      : <div className="max-h-80 overflow-auto"><table className="w-full min-w-[44rem] text-xs">
+      : <><div className="max-h-80 overflow-auto"><table className="w-full min-w-[44rem] text-xs">
         <thead className="sticky top-0 bg-white"><tr className="text-left text-slate-600"><th className="py-1">Desde</th><th>Hacia</th><th className="text-right">Cantidad</th><th>Origen</th><th>Nota</th><th>Estado</th><th></th></tr></thead>
-        <tbody>{links.map(l => <tr key={l.id} className={`border-t border-slate-100 ${l.status === 'ANULADO' ? 'text-slate-400 line-through' : ''}`}>
+        <tbody>{pg.pageRows.map(l => <tr key={l.id} className={`border-t border-slate-100 ${l.status === 'ANULADO' ? 'text-slate-400 line-through' : ''}`}>
           <td className="py-1">{l.fromKind} <b>{l.fromRef}</b></td><td>{l.toKind} <b>{l.toRef}</b></td><td className="text-right tabular-nums">{l.qty ? `${fmtNum(Number(l.qty))} ${l.unidad ?? ''}` : 'total'}</td>
           <td>{ORIGIN_LABEL[l.origin]}{l.rule ? ` · ${l.rule}` : ''}</td><td className="max-w-[14rem] truncate" title={l.note ?? ''}>{l.note}</td><td>{l.status === 'VIGENTE' ? 'Vigente' : 'Anulado'}</td>
           <td>{operate && l.status === 'VIGENTE' && <button type="button" className="text-[#cf152d]" onClick={() => { const r = window.prompt('Motivo de la anulación'); if (r) void call('apa_link_annul', { p_id: l.id, p_reason: r }, 'Vínculo anulado') }}>Anular</button>}</td>
-        </tr>)}</tbody></table></div>}
+        </tr>)}</tbody></table></div>{pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="vínculos" />}</>}
     {operate && <form className="mt-3 grid grid-cols-2 gap-2 text-xs md:grid-cols-4" onSubmit={e => { e.preventDefault(); void call('apa_link_save', { p: f }, 'Vínculo registrado') }}>
       <select value={f.fromKind} onChange={e => setF({ ...f, fromKind: e.target.value as LinkKind })} className="h-8 rounded border border-slate-300 bg-white" aria-label="Tipo de origen">{KINDS.map(k => <option key={k}>{k}</option>)}</select>
       <input value={f.fromRef} onChange={e => setF({ ...f, fromRef: e.target.value })} placeholder="Referencia de origen" className="h-8 rounded border border-slate-300 px-2" aria-label="Referencia de origen" />
@@ -169,11 +176,12 @@ function Audit() {
   const [rows, setRows] = useState<Array<{ id: number; entity: string; entity_id: string; action: string; note: string | null; at: string; by: string | null }>>([])
   const load = useCallback(async () => { const { data } = await supabase.rpc('apa_audit_list', { p_entity: null, p_entity_id: null, p_limit: 100 }); setRows((data ?? []) as never) }, [supabase])
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t) }, [load])
+  const pg = usePagination(rows, 'apt-analitica-config-auditoria')
   return <Card title="Auditoría" subtitle="Cargas, reversiones, revisiones, equivalencias y cambios de configuración (últimos 100)">
-    {rows.length === 0 ? <Empty title="Sin registros" /> : <div className="max-h-72 overflow-auto"><table className="w-full min-w-[36rem] text-xs">
+    {rows.length === 0 ? <Empty title="Sin registros" /> : <><div className="max-h-72 overflow-auto"><table className="w-full min-w-[36rem] text-xs">
       <thead className="sticky top-0 bg-white"><tr className="text-left text-slate-600"><th className="py-1">Fecha</th><th>Usuario</th><th>Elemento</th><th>Acción</th><th>Nota</th></tr></thead>
-      <tbody>{rows.map(r => <tr key={r.id} className="border-t border-slate-100"><td className="whitespace-nowrap py-1">{fmtDateTime(r.at)}</td><td>{r.by ?? '—'}</td>
+      <tbody>{pg.pageRows.map(r => <tr key={r.id} className="border-t border-slate-100"><td className="whitespace-nowrap py-1">{fmtDateTime(r.at)}</td><td>{r.by ?? '—'}</td>
         <td>{r.entity} <span className="text-slate-500">{r.entity_id?.slice(0, 24)}</span></td><td>{r.action}</td><td className="max-w-[18rem] truncate" title={r.note ?? ''}>{r.note}</td></tr>)}</tbody>
-    </table></div>}
+    </table></div>{pg.total > 25 && <TablePagination compact total={pg.total} page={pg.page} pageSize={pg.pageSize} onPageChange={pg.setPage} onPageSizeChange={pg.setPageSize} itemLabel="registros" />}</>}
   </Card>
 }

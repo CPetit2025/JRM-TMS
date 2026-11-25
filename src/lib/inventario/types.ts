@@ -121,6 +121,9 @@ export interface InvContratoFila {
   primer_ingreso: string | null; ultimo_ingreso: string | null; ultima_salida: string | null; fecha_entrega: string | null
 }
 export interface InvContratos { corte: string | null; cache?: InvCacheInfo; contratos: InvContratoFila[] }
+// La misma fila desglosada por OT + producto (código y glosa)
+export type InvContratoProductoFila = Omit<InvContratoFila, 'productos'> & { producto: string; glosa: string | null; unidad: string | null }
+export interface InvContratosProducto { corte: string | null; cache?: InvCacheInfo; filas: InvContratoProductoFila[] }
 
 export interface InvAptResumen {
   corte: string | null; cache?: InvCacheInfo
@@ -171,6 +174,17 @@ export interface InvDwellDimResult {
   dim: InvDwellDim; ambito: 'apt' | 'todas'; ot: string | null; desde: string; hasta: string; corte: string; total: number
   cache?: InvCacheInfo; filas: InvDwellDimRow[]
 }
+
+// Estadía por contrato y bodega (inv_estadia_contratos): stock actual, estadía ponderada y % del stock con más de 60 días
+export interface InvEstadiaContrato {
+  contrato: string | null; lote: string | null; ot: string | null; cliente: string | null; bodega: string; almacen: AptAlmacen
+  stock_kg: number; stock_qty: number; kg_conocido: boolean; estadia: number | null; pct_nd: number | null; pct_60: number | null; kg_60: number
+}
+export interface InvEstadiaContratos { corte: string; filas: InvEstadiaContrato[] }
+
+// Contratos u OT ocultos del modelo APT por errores del sistema (inv_contratos_ocultos)
+export interface InvOculto { codigo: string; motivo: string; fecha: string; usuario: string | null; stock_kg: number }
+export interface InvOcultos { puede_editar: boolean; filas: InvOculto[] }
 
 // Kardex de una OT en el APT: ingresos, salidas y saldo acumulado
 export interface InvKardexMov {

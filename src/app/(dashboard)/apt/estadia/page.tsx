@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { EstadiaPor, VerPor } from '@/components/inventario/EstadiaPor'
+import { EstadiaContratos } from '@/components/inventario/EstadiaContratos'
 import Link from 'next/link'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ChartCard, ErrorBlock, KpiCard, LoadingBlock } from '@/components/apt/ui'
@@ -118,7 +119,7 @@ function EstadiaBodegas() {
   )
 }
 
-// Estadía: por contrato / OT, ID (glosa) o cliente, o por bodega
+// Estadía: por contrato y bodega (tabla principal), por ID (glosa), cliente o bodega
 export default function InventarioEstadiaPage() {
-  return <VerPor bodegas={<EstadiaBodegas />} detalle={dim => <EstadiaPor key={dim} dim={dim} />} />
+  return <VerPor bodegas={<EstadiaBodegas />} detalle={dim => dim === 'ot' ? <EstadiaContratos /> : <EstadiaPor key={dim} dim={dim} />} />
 }
