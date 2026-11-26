@@ -145,7 +145,7 @@ export interface InvContratoTms { dispatch_id: string; numero: string | null; es
 export interface InvContratoLineas {
   ot: string
   corte: string | null
-  lineas: Array<{ item: string; documento: string; secuencia: number; producto: string; glosa: string | null; unidad: string | null
+  lineas: Array<{ item: string; documento: string; secuencia: number; producto: string; glosa: string | null; unidad: string | null; peso_unit?: number | null
     contratado: number; despachado: number; pendiente: number; estado: string | null; guias: number | null; fecha_contrato: string | null; ultimo_despacho: string | null }>
 }
 
