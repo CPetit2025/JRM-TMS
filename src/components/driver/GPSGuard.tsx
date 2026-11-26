@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createDriverPresenceReporter } from '@/lib/driver-presence'
 import { nativeRouteTracker, trackingDeviceToken } from '@/lib/native-route-tracker'
+import { phoneReadiness, type PhoneReadiness } from '@/lib/phone-readiness'
 import { activeRouteKey, pendingRouteSummary, readRouteQueue, routeQueueKey, syncRoutePoints } from '@/lib/route-point-sync'
 
 type BatteryInfo = { level: number; charging: boolean; addEventListener(type: string, listener: () => void): void }
@@ -23,7 +24,14 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
       platform: nativeRouteTracker ? 'android' : 'web', native_tracking: nativeStarted,
       pending_points: pending.count, oldest_pending_at: pending.oldest,
       device: deviceLabel(), app_version: process.env.APP_VERSION || null,
+      ...(ready ? { location_ok: ready.location_ok, background_location: ready.background_location, notifications_ok: ready.notifications_ok,
+        battery_exempt: ready.battery_exempt, power_save: ready.power_save } : {}),
     })
+    // Estado del teléfono para el Monitoreo GPS (permisos y batería); se revisa cada minuto
+    let ready: PhoneReadiness | null = null
+    const checkReady = () => { void phoneReadiness().then(value => { ready = value }) }
+    checkReady()
+    const readyTimer = window.setInterval(checkReady, 60000)
     const presence = createDriverPresenceReporter(supabase, clientInfo)
     const heartbeat = () => { void presence.send().catch(() => {}) }
     const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryInfo> }
@@ -112,6 +120,7 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
     // Al volver al app (pantalla encendida, otra app cerrada): reportar y subir de inmediato, sin esperar los intervalos
     const onVisible = () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      checkReady()
       void presence.send(true).catch(() => {})
       void refreshAssignment().then(flush).catch(() => {})
     }
@@ -153,7 +162,7 @@ export default function GPSGuard({ children }: { children: ReactNode }) {
     return () => {
       stopped = true
       presence.stop()
-      window.clearInterval(presenceTimer)
+      window.clearInterval(presenceTimer); window.clearInterval(readyTimer)
       window.removeEventListener('online', heartbeat)
       window.removeEventListener('focus', heartbeat)
       if (watchId !== undefined) navigator.geolocation.clearWatch(watchId)

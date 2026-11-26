@@ -4,7 +4,8 @@ type NativePoint = {
   id: string; dispatch_id: string; driver_id: string; recorded_at: string
   latitude: number; longitude: number; accuracy_m: number; speed_mps?: number
 }
-export type NativeBatteryStatus = { exempt: boolean; powerSave: boolean; manufacturer: string; credential: boolean }
+// backgroundLocation: desde el APK 1.4.0
+export type NativeBatteryStatus = { exempt: boolean; powerSave: boolean; manufacturer: string; credential: boolean; backgroundLocation?: boolean }
 
 // supabaseUrl/anonKey/deviceToken: credencial del dispositivo para que el servicio suba los puntos por sí mismo.
 // forget, batteryStatus, requestBatteryExemption y openAppSettings existen desde el APK con seguimiento nativo;

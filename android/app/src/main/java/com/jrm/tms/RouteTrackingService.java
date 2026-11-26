@@ -296,12 +296,19 @@ public class RouteTrackingService extends Service implements LocationListener {
             client.put("network", network);
             client.put("platform", "android-native");
             client.put("pending_points", pending);
+            client.put("location_ok", granted(Manifest.permission.ACCESS_FINE_LOCATION));
+            client.put("background_location", Build.VERSION.SDK_INT < 29 || granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION));
+            client.put("notifications_ok", androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled());
             client.put("device", Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE);
             client.put("app_version", getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
             Location location = lastLocation;
             client.put("gps_state", location == null ? "checking" : "active");
         } catch (JSONException | PackageManager.NameNotFoundException | RuntimeException ignored) { }
         return client;
+    }
+
+    private boolean granted(String permission) {
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
     }
 
     private String networkType() {

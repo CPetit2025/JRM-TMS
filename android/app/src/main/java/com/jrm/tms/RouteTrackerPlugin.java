@@ -81,6 +81,9 @@ public class RouteTrackerPlugin extends Plugin {
         result.put("powerSave", power != null && power.isPowerSaveMode());
         result.put("manufacturer", Build.MANUFACTURER);
         result.put("credential", TrackingConfig.load(getContext()).canSync());
+        // «Permitir todo el tiempo»: sin él Android no deja que la alarma vigía o el reinicio reanuden la ruta
+        String background = Build.VERSION.SDK_INT >= 29 ? Manifest.permission.ACCESS_BACKGROUND_LOCATION : Manifest.permission.ACCESS_FINE_LOCATION;
+        result.put("backgroundLocation", ContextCompat.checkSelfPermission(getContext(), background) == android.content.pm.PackageManager.PERMISSION_GRANTED);
         call.resolve(result);
     }
 
