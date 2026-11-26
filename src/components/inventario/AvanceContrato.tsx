@@ -48,17 +48,18 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
     f.bodega && `Bodega: ${f.bodega === 'NINGUNA' ? 'sin stock' : f.bodega}`, f.situacion && ({ LISTO: 'Listo para despachar', PRODUCIR: 'Falta producir', SIN_PESO: 'Sin peso unitario' } as Record<string, string>)[f.situacion],
     (f.min || f.max) && `Avance ${f.min || 0}–${f.max || 100} %`, f.q && `Texto: ${f.q}`].filter(Boolean) as string[]
 
-  const pair = (q: number, peso: number | null, first = false) => <>
-    {und && <td className={`px-2 py-1.5 text-right tabular-nums ${first ? 'border-l border-slate-100' : ''}`}>{q ? q3.format(q) : <Dash />}</td>}
+  // Cantidades en la unidad del contrato; si no es UND se muestra al lado
+  const pair = (q: number, peso: number | null, first = false, unidad: string | null = null) => <>
+    {und && <td className={`px-2 py-1.5 text-right tabular-nums ${first ? 'border-l border-slate-100' : ''}`}>{q ? <>{q3.format(q)}{unidad && unidad.trim().toUpperCase() !== 'UND' && <span className="ml-1 text-[10px] font-semibold text-amber-700">{unidad}</span>}</> : <Dash />}</td>}
     {ton && <td className={`px-2 py-1.5 text-right tabular-nums text-slate-500 ${!und ? 'border-l border-slate-100' : ''}`}>{!q ? <Dash /> : peso ? t3.format(tn(q, peso)) : <span className="font-semibold text-amber-700" title="Sin peso unitario en el ERP ni en el APT">s/p</span>}</td>}
   </>
-  const tpair = (q: number, t: number) => <>
-    {und && <td className="border-l border-white/10 px-2 py-1.5 text-right tabular-nums">{q0.format(q)}</td>}
+  const tpair = (q: number, t: number, mixta = false) => <>
+    {und && <td className="border-l border-white/10 px-2 py-1.5 text-right tabular-nums" title={mixta ? 'Unidades distintas: compare en TN' : undefined}>{mixta ? '—' : q0.format(q)}</td>}
     {ton && <td className="px-2 py-1.5 text-right tabular-nums">{t2.format(t)}</td>}
   </>
   const totales = (t: AvanceTotal) => <>
-    {tpair(t.contratado, t.tContratado)}{tpair(t.despachado, t.tDespachado)}{tpair(t.saldo, t.tSaldo)}
-    {[0, 1, 2].map(i => <Fragment key={i}>{tpair(t.apt[i], t.tApt[i])}</Fragment>)}{tpair(t.porProducir, t.tPorProducir)}
+    {tpair(t.contratado, t.tContratado, t.mixta)}{tpair(t.despachado, t.tDespachado, t.mixta)}{tpair(t.saldo, t.tSaldo, t.mixta)}
+    {[0, 1, 2].map(i => <Fragment key={i}>{tpair(t.apt[i], t.tApt[i], t.mixta)}</Fragment>)}{tpair(t.porProducir, t.tPorProducir, t.mixta)}
     <td className="px-2 py-1.5"><Bar d={t.tDespachado} a={t.tApt[0] + t.tApt[1] + t.tApt[2]} c={t.tContratado} /><span className="text-[10px]">{pct(t.tDespachado, t.tContratado)}</span></td><td />
   </>
   const fila = (x: AvanceFila) => <tr key={x.item} className="border-b border-slate-100 align-top hover:bg-slate-50">
@@ -68,8 +69,8 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
       {x.unidadDistinta && <span className="font-semibold text-amber-700" title="El APT lleva este ID en otra unidad: el stock no se asigna al ítem"> · otra unidad en APT</span>}</p>
       <p className="max-w-80 text-slate-800">{x.glosa ?? '—'}</p>
       {onKardex && <button type="button" onClick={() => onKardex(x.producto)} className="text-[11px] font-semibold text-[#002855] underline decoration-dotted">Kardex del ID</button>}</td>
-    {pair(x.contratado, x.peso, true)}{pair(x.despachado, x.peso, true)}{pair(x.saldo, x.peso, true)}
-    {pair(x.apt[0], x.peso, true)}{pair(x.apt[1], x.peso, true)}{pair(x.apt[2], x.peso, true)}{pair(x.porProducir, x.peso, true)}
+    {pair(x.contratado, x.peso, true, x.unidad)}{pair(x.despachado, x.peso, true, x.unidad)}{pair(x.saldo, x.peso, true, x.unidad)}
+    {pair(x.apt[0], x.peso, true, x.unidad)}{pair(x.apt[1], x.peso, true, x.unidad)}{pair(x.apt[2], x.peso, true, x.unidad)}{pair(x.porProducir, x.peso, true, x.unidad)}
     <td className="px-2 py-1.5"><Bar d={x.despachado} a={x.enApt} c={x.contratado} /><span className="text-[10px] text-slate-500">{Math.round(x.avance * 100)} %</span></td>
     <td className="px-2 py-1.5"><span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${ESTADO_CLS[x.estado]}`}>{x.estado}</span></td>
   </tr>
@@ -97,7 +98,7 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
               className={`min-h-9 px-3 text-xs font-semibold ${f.soloSaldo === v ? 'bg-[#002855] text-white' : 'bg-white text-slate-700'}`}>{l as string}</button>)}
           </div>
           <div className="inline-flex overflow-hidden rounded-lg border border-slate-300" role="group" aria-label="Unidades">
-            {([['both', 'Und + TN'], ['und', 'Und'], ['tn', 'TN']] as Array<[Vista, string]>).map(([v, l]) => <button key={v} type="button" aria-pressed={vista === v} onClick={() => setVista(v)}
+            {([['both', 'Cant. + TN'], ['und', 'Cant.'], ['tn', 'TN']] as Array<[Vista, string]>).map(([v, l]) => <button key={v} type="button" aria-pressed={vista === v} onClick={() => setVista(v)}
               className={`min-h-9 px-3 text-xs font-semibold ${vista === v ? 'bg-[#002855] text-white' : 'bg-white text-slate-700'}`}>{l}</button>)}
           </div>
           <button type="button" aria-expanded={avanzado} onClick={() => setAvanzado(v => !v)} className="flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]">
@@ -120,7 +121,7 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
         {chips.length > 0 && <div className="flex flex-wrap items-center gap-1.5">{chips.map(c => <span key={c} className="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-900">{c}</span>)}
           {(nAvz > 0 || f.q) && <button type="button" onClick={() => setF({ ...FILTRO_INICIAL, soloSaldo: f.soloSaldo })} className="flex items-center gap-1 text-[11px] font-semibold text-slate-600 underline"><X className="h-3 w-3" aria-hidden /> Limpiar filtros</button>}</div>}
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-          {([['Contratado', `${t2.format(T.tContratado)} TN`, `${q0.format(T.contratado)} und${T.sinPeso ? ` · ${fmtN(T.sinPeso)} ítems sin peso` : ''}`, 'border-t-[#002855] text-[#002855]'],
+          {([['Contratado', `${t2.format(T.tContratado)} TN`, `${T.mixta ? 'varias unidades' : `${q0.format(T.contratado)} ${(T.unidad ?? 'und').toLowerCase()}`}${T.sinPeso ? ` · ${fmtN(T.sinPeso)} ítems sin peso` : ''}`, 'border-t-[#002855] text-[#002855]'],
             ['Despachado', `${t2.format(T.tDespachado)} TN`, `${pct(T.tDespachado, T.tContratado)} del contrato`, 'border-t-[#002855] text-[#002855]'],
             ['Saldo por despachar', `${t2.format(T.tSaldo)} TN`, `${fmtN(todas.filter(x => x.saldo > 0).length)} ítems con saldo`, 'border-t-red-600 text-red-700'],
             ['En APT (listo)', `${t2.format(T.tApt[0] + T.tApt[1] + T.tApt[2])} TN`, BODEGAS.map((b, i) => `${b}: ${t2.format(T.tApt[i])}`).join(' · '), 'border-t-amber-500 text-amber-700'],
@@ -134,7 +135,7 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
             <tr>{!agrupar && <th scope="col" rowSpan={2} className={`${thc} top-0 bg-slate-50 text-left`}>Lote</th>}<th scope="col" rowSpan={2} className={`${thc} top-0 bg-slate-50 text-left`}>Ítem</th><th scope="col" rowSpan={2} className={`${thc} top-0 bg-slate-50 text-left`}>ID + glosa</th>
               {GRUPOS.map(([g, c]) => <th key={g} scope="colgroup" colSpan={span} className={`${thc} top-0 text-center ${c}`}>{g}</th>)}
               <th scope="col" rowSpan={2} className={`${thc} top-0 bg-slate-50 text-left`}>Avance</th><th scope="col" rowSpan={2} className={`${thc} top-0 bg-slate-50 text-left`}>Estado</th></tr>
-            <tr>{GRUPOS.map(([g]) => <Fragment key={g}>{und && <th scope="col" className={`${thc} top-7 bg-slate-50 text-right`}>Und</th>}{ton && <th scope="col" className={`${thc} top-7 bg-slate-50 text-right`}>TN</th>}</Fragment>)}</tr>
+            <tr>{GRUPOS.map(([g]) => <Fragment key={g}>{und && <th scope="col" className={`${thc} top-7 bg-slate-50 text-right`}>Cant.</th>}{ton && <th scope="col" className={`${thc} top-7 bg-slate-50 text-right`}>TN</th>}</Fragment>)}</tr>
           </thead>
           <tbody>
             {!filas.length && <tr><td colSpan={30} className="p-6 text-center text-slate-500">Sin ítems con estos filtros</td></tr>}
@@ -157,8 +158,8 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
           <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-[#002855]" />Despachado</span><span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-amber-400" />En APT (listo)</span><span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-slate-200" />Por producir</span></div>
         {lotesVista.map(l => { const t = totalAvance(todas.filter(x => x.lote === l))
           // Lote sin peso en ningún ítem: el cumplimiento se mide en unidades
-          const enTn = t.tContratado > 0, c = enTn ? t.tContratado : t.contratado, d = enTn ? t.tDespachado : t.despachado
-          const apt = enTn ? t.tApt[0] + t.tApt[1] + t.tApt[2] : t.apt[0] + t.apt[1] + t.apt[2], fmt = enTn ? t2 : q0, u = enTn ? 'TN' : 'und'
+          const enTn = t.tContratado > 0, c = enTn ? t.tContratado : t.mixta ? 0 : t.contratado, d = enTn ? t.tDespachado : t.despachado
+          const apt = enTn ? t.tApt[0] + t.tApt[1] + t.tApt[2] : t.apt[0] + t.apt[1] + t.apt[2], fmt = enTn ? t2 : q0, u = enTn ? 'TN' : (t.unidad ?? 'und').toLowerCase()
           const w = (x: number) => (c > 0 ? `${(x / c) * 100}%` : '0%')
           return <div key={l} className="grid grid-cols-[7rem_1fr_13rem] items-center gap-2 text-[11px]">
             <span className="text-right font-semibold text-slate-700">{l}</span>

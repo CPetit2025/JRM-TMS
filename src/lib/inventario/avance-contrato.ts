@@ -40,10 +40,12 @@ export function buildAvance(lineas: InvContratoLineas['lineas'], productos: InvC
 
 export const tn = (q: number, peso: number | null) => (peso ? (q * peso) / 1000 : 0)
 
-export type AvanceTotal = { n: number; sinPeso: number; contratado: number; despachado: number; saldo: number; apt: number[]; porProducir: number
+// unidad: la común a todas las filas, o null si se mezclan (entonces las sumas en cantidad no se muestran)
+export type AvanceTotal = { n: number; sinPeso: number; unidad: string | null; mixta: boolean; contratado: number; despachado: number; saldo: number; apt: number[]; porProducir: number
   tContratado: number; tDespachado: number; tSaldo: number; tApt: number[]; tPorProducir: number }
 export function totalAvance(rows: AvanceFila[]): AvanceTotal {
-  const t: AvanceTotal = { n: rows.length, sinPeso: 0, contratado: 0, despachado: 0, saldo: 0, apt: [0, 0, 0], porProducir: 0, tContratado: 0, tDespachado: 0, tSaldo: 0, tApt: [0, 0, 0], tPorProducir: 0 }
+  const us = new Set(rows.map(r => (r.unidad ?? '').trim().toUpperCase()))
+  const t: AvanceTotal = { n: rows.length, sinPeso: 0, unidad: us.size === 1 ? [...us][0] || null : null, mixta: us.size > 1, contratado: 0, despachado: 0, saldo: 0, apt: [0, 0, 0], porProducir: 0, tContratado: 0, tDespachado: 0, tSaldo: 0, tApt: [0, 0, 0], tPorProducir: 0 }
   for (const r of rows) {
     if (!r.peso) t.sinPeso++
     t.contratado += r.contratado; t.despachado += r.despachado; t.saldo += r.saldo; t.porProducir += r.porProducir

@@ -27,7 +27,8 @@ test('otra unidad en el APT no se asigna; sin peso queda marcado; los totales en
   const rows = buildAvance([linea('16101-001', 'B', 8, 8), linea('16101-002', 'C', 6, 0)], [prod('C', 6, 0, 0, { unidad: 'CIEN' })])
   assert.equal(rows[0].estado, 'COMPLETO'); assert.equal(rows[0].peso, null)
   assert.equal(rows[1].unidadDistinta, true); assert.equal(rows[1].enApt, 0); assert.equal(rows[1].porProducir, 6)
-  const t = totalAvance(rows); assert.equal(t.sinPeso, 2); assert.equal(t.tContratado, 0); assert.equal(t.contratado, 14)
+  const t = totalAvance(rows); assert.equal(t.sinPeso, 2); assert.equal(t.tContratado, 0); assert.equal(t.contratado, 14); assert.equal(t.mixta, false)
+  assert.equal(totalAvance(buildAvance([linea('16101-003', 'E', 2, 0, { unidad: 'CIEN' }), linea('16101-004', 'F', 3, 0)], [])).mixta, true)
 })
 
 test('filtros: solo con saldo por defecto, bodega, situación y rango de avance', () => {
