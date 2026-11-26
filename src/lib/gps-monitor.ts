@@ -10,6 +10,7 @@ export type DriverMonitorRow = {
 export type DriverClientState = {
   battery?: number; charging?: boolean; network?: string; online?: boolean; visibility?: 'visible' | 'hidden'
   platform?: string; native_tracking?: boolean; device?: string; app_version?: string; reported_at?: string
+  location_ok?: boolean; background_location?: boolean; notifications_ok?: boolean; battery_exempt?: boolean
 }
 
 // Conexión del app en tres niveles: conectado (aviso en 90 s), intermitente (aviso en 5 min: pantalla bloqueada,
@@ -30,7 +31,16 @@ export function clientHints(row: Pick<DriverMonitorRow, 'client' | 'pending_poin
   if (row.pending_points) hints.push(`${row.pending_points} punto(s) GPS por enviar`)
   return hints
 }
-export const monitorStates: Record<string, { label: string; color: string }> = {
+// Permisos que le faltan al teléfono para no perder la ruta. Lo que el app no reportó no se cuenta como falta.
+export function phoneGaps(client: DriverClientState | null | undefined): string[] {
+  const c = client || {}, gaps: string[] = []
+  if (c.location_ok === false) gaps.push('ubicación')
+  if (c.background_location === false) gaps.push('ubicación todo el tiempo')
+  if (c.notifications_ok === false) gaps.push('notificaciones')
+  if (c.battery_exempt === false) gaps.push('batería sin restricción')
+  return gaps
+}
+export const monitorStates:Record<string, { label: string; color: string }> = {
   SIN_RUTA: { label: 'Sin ruta', color: 'blue' },
   ESPERANDO_DOCUMENTOS: { label: 'Con ruta · esperando Packing List', color: 'amber' },
   RUTA_ASIGNADA: { label: 'Con ruta · listo para salir', color: 'blue' },

@@ -12,7 +12,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/modal'
 import { errorMessage } from '@/lib/caja'
-import { clientHints, connectionLevel, gpsTime, monitorMarker, monitorStates, stateFor, type DriverMonitorRow } from '@/lib/gps-monitor'
+import { clientHints, connectionLevel, phoneGaps, gpsTime, monitorMarker, monitorStates, stateFor, type DriverMonitorRow } from '@/lib/gps-monitor'
 import { ConnectivityReport } from '@/components/monitoreo/ConnectivityReport'
 
 const MapComponent = dynamic(() => import('@/components/map/MapComponent'), { ssr: false,
@@ -130,6 +130,7 @@ export default function MonitoreoPage() {
             <span className={row.level === 'connected' ? 'font-semibold text-emerald-700' : row.level === 'intermittent' ? 'font-semibold text-amber-800' : 'text-slate-500'} title={`Conexión: ${gpsTime(row.last_seen_at)}`}>{row.driver_id ? (row.level === 'connected' ? '● App conectada' : row.level === 'intermittent' ? '◐ Señal intermitente' : '○ Sin conexión reciente') : 'Sin app vinculada'}</span>
             <span className={`inline-flex items-center gap-1 ${row.gps_fresh ? 'text-slate-500' : 'text-amber-800'}`}><MapPin className="h-3 w-3 shrink-0" aria-hidden="true" />{row.gps_state === 'denied' ? 'GPS denegado · ' : !row.gps_fresh ? 'Sin señal · ' : ''}{gpsTime(row.gps_at)}</span>
           </span>
+          {phoneGaps(row.client).length > 0 && <span className="mt-0.5 block truncate text-[11px] font-semibold text-amber-800" title="Pide al conductor revisar Inicio › Deja tu teléfono listo para la ruta">⚠ Teléfono: falta {phoneGaps(row.client).join(", ")}</span>}
           {row.level !== 'connected' && clientHints(row).length > 0 && <span className="mt-0.5 block truncate text-[11px] text-slate-500">{clientHints(row).join(' · ')}</span>}
         </button></li>)}</ul>}
       </section>
@@ -138,6 +139,7 @@ export default function MonitoreoPage() {
         {!markers.length && <p className="pointer-events-none absolute left-3 right-3 top-3 z-[500] rounded-xl border border-slate-200 bg-white/95 p-3 text-xs text-slate-600 shadow">Los conductores sin ubicación disponible se muestran en la lista. No hay puntos GPS para estos filtros.</p>}
         {selected && <div className="absolute bottom-3 left-3 right-3 z-[500] space-y-2 rounded-jrm border border-jrm-line bg-white/95 p-3 shadow-xl backdrop-blur sm:right-auto sm:w-[26rem]" role="region" aria-label={`Detalle de ${selected.driver}`}>
           <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h2 className="truncate font-bold text-jrm-navy">{selected.driver}</h2><p className="truncate text-sm text-slate-600">{selected.plate || 'Sin unidad asignada'} · {selected.dispatch_number || 'Sin ruta asignada'}</p></div><div className="flex shrink-0 items-center gap-1"><Status row={selected} /><button type="button" onClick={() => setSelectedId(null)} aria-label="Cerrar detalle" className="grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X className="h-4 w-4" /></button></div></div>
+          {phoneGaps(selected.client).length > 0 && <p className="text-xs font-semibold text-amber-800">Teléfono no listo para ruta: falta {phoneGaps(selected.client).join(", ")}. El conductor lo resuelve en Inicio del app.</p>}
           {clientHints(selected).length > 0 && <p className="text-xs text-slate-600">Teléfono: {clientHints(selected).join(' · ')}{selected.client?.device && ` · ${selected.client.device}`}</p>}
           <p className="text-xs text-slate-600">GPS: {gpsTime(selected.gps_at)}{selected.accuracy_m !== null && ` · precisión ±${Math.round(selected.accuracy_m)} m`}{selected.gps_fresh && selected.speed !== null && ` · ${Math.round(selected.speed)} km/h`} · Conexión: {gpsTime(selected.last_seen_at)}</p>
           {selected.dispatch_id && <div className="flex flex-wrap gap-2">{canRegister && <button onClick={() => { setEventType('CHECKPOINT'); setDescription(''); setEventOpen(true) }} className="flex min-h-10 items-center gap-2 rounded-lg bg-jrm-navy px-3 text-sm font-semibold text-white hover:bg-jrm-navy-dark"><Plus className="h-4 w-4" />Registrar novedad</button>}<Link href={`/torre-control?despacho=${selected.dispatch_id}`} className="flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-3 text-sm hover:bg-slate-50">Revisar servicio y conformidad</Link></div>}
