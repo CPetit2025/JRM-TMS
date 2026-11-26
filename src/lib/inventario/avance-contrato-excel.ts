@@ -6,7 +6,8 @@ export type AvanceMeta = { ot: string; cliente: string | null; corte: string | n
 export type HojaFila =
   | { tipo: 'lote'; lote: string; n: number; t: AvanceTotal }
   | { tipo: 'item'; f: AvanceFila }
-export type HojaLote = { lote: string; n: number; sinPeso: number; enTn: boolean; contrato: number; despachado: number; apt: number; porProducir: number; pct: number | null }
+// medida: TN, la unidad común del lote, o null si el lote no tiene peso y mezcla unidades (entonces no se suman cantidades)
+export type HojaLote = { lote: string; n: number; sinPeso: number; enTn: boolean; medida: string | null; contrato: number | null; despachado: number | null; apt: number | null; porProducir: number | null; pct: number | null }
 export type HojaAvance = { meta: AvanceMeta; total: AvanceTotal; general: AvanceTotal; filas: HojaFila[]; lotes: HojaLote[] }
 
 export const GRUPOS_XLS = ['Contrato', 'Despachado', 'Saldo', 'APT 647', 'APT 540', 'APT ST', 'Por producir'] as const
@@ -29,9 +30,10 @@ export function buildHoja(filas: AvanceFila[], todas: AvanceFila[], meta: Avance
   // Cumplimiento: cada lote completo (no solo lo filtrado); en unidades si ningún ítem tiene peso
   const resumen = lotes.map(l => {
     const t = totalAvance(todas.filter(f => f.lote === l)), enTn = t.tContratado > 0
-    const contrato = enTn ? t.tContratado : t.mixta ? 0 : t.contratado
+    if (!enTn && t.mixta) return { lote: l, n: t.n, sinPeso: t.sinPeso, enTn, medida: null, contrato: null, despachado: null, apt: null, porProducir: null, pct: null }
+    const contrato = enTn ? t.tContratado : t.contratado
     const despachado = enTn ? t.tDespachado : t.despachado
-    return { lote: l, n: t.n, sinPeso: t.sinPeso, enTn, contrato, despachado, apt: enTn ? t.tApt[0] + t.tApt[1] + t.tApt[2] : t.apt[0] + t.apt[1] + t.apt[2],
+    return { lote: l, n: t.n, sinPeso: t.sinPeso, enTn, medida: enTn ? 'TN' : (t.unidad ?? 'UND'), contrato, despachado, apt: enTn ? t.tApt[0] + t.tApt[1] + t.tApt[2] : t.apt[0] + t.apt[1] + t.apt[2],
       porProducir: enTn ? t.tPorProducir : t.porProducir, pct: contrato > 0 ? Math.min(1, despachado / contrato) : null }
   })
   return { meta, total: totalAvance(filas), general: totalAvance(todas), filas: out, lotes: resumen }
@@ -123,7 +125,6 @@ export async function buildAvanceWorkbook(ExcelJS: typeof ExcelJSType, hoja: Hoj
     ws.mergeCells(10, c, 10, c + 1); head(10, c, g.toUpperCase(), GRUPO_FILL[i]); head(11, c, 'CANT.', GRUPO_FILL[i], MUTED); head(11, c + 1, 'TN', GRUPO_FILL[i], MUTED)
   })
   ;['AVANCE', 'ESTADO', 'PESO UNIT. (KG)', 'FUENTE PESO'].forEach((t, i) => { const c = ITEM_COLS + GRUPOS_XLS.length * 2 + 1 + i; ws.mergeCells(10, c, 11, c); head(10, c, t, NAVY, WHITE) })
-  ws.autoFilter = { from: { row: 11, column: 1 }, to: { row: 11, column: ncol } }
 
   const cAv = ITEM_COLS + GRUPOS_XLS.length * 2 + 1
   const numCells = (r: number, q: number[], t: Array<number | null>, mixta: boolean, bold: boolean, color: string) => {
@@ -164,6 +165,10 @@ export async function buildAvanceWorkbook(ExcelJS: typeof ExcelJSType, hoja: Hoj
     const av = ws.getCell(r, cAv); av.numFmt = '0%'; av.font = { size: 9, bold: f.tipo === 'lote', color: { argb: INK } }; av.alignment = { horizontal: 'right', vertical: 'middle' }
     r++
   }
+  // Autofiltro sobre títulos y datos (sin el total ni las notas)
+  ws.autoFilter = { from: { row: 11, column: 1 }, to: { row: Math.max(11, r - 1), column: ncol } }
+  // Fila separadora: sin ella Excel extiende el filtro hasta el total y lo ordena con los datos
+  ws.getRow(r).height = 6; r++
   // Total de la vista
   const T = hoja.total
   ws.getRow(r).height = 20
@@ -186,7 +191,7 @@ export async function buildAvanceWorkbook(ExcelJS: typeof ExcelJSType, hoja: Hoj
   cols2.forEach(([t], i) => { const c = w2.getCell(7, i + 1); c.value = t; c.font = { size: 9, bold: true, color: { argb: WHITE } }; c.fill = solid(NAVY); c.alignment = { horizontal: 'center', vertical: 'middle' } })
   hoja.lotes.forEach((l, i) => {
     const rr = 8 + i, row = w2.getRow(rr); row.height = 18
-    ;[l.lote, l.n, l.sinPeso || '—', l.enTn ? 'TN' : 'Und', l.contrato, l.despachado, l.apt, l.porProducir, l.pct].forEach((v, j) => {
+    ;[l.lote, l.n, l.sinPeso || '—', l.medida ?? 'Mixta', l.contrato ?? '—', l.despachado ?? '—', l.apt ?? '—', l.porProducir ?? '—', l.pct ?? '—'].forEach((v, j) => {
       const c = row.getCell(j + 1); c.value = v as ExcelJSType.CellValue; c.font = { size: 10, bold: j === 0 || j === 8, color: { argb: j === 0 ? NAVY : INK } }
       c.alignment = { horizontal: j === 0 ? 'left' : j === 3 ? 'center' : 'right', vertical: 'middle' }
       if (j >= 4 && j <= 7) c.numFmt = l.enTn ? TN2 : QTY
@@ -197,7 +202,7 @@ export async function buildAvanceWorkbook(ExcelJS: typeof ExcelJSType, hoja: Hoj
   const last = 7 + hoja.lotes.length
   if (hoja.lotes.length) w2.addConditionalFormatting({ ref: `I8:I${last}`,
     rules: [{ type: 'dataBar', priority: 1, minLength: 0, maxLength: 100, gradient: false, cfvo: [{ type: 'num', value: 0 }, { type: 'num', value: 1 }], color: { argb: 'FFA9BEDD' } } as unknown as ExcelJSType.ConditionalFormattingRule] })
-  w2.getCell(last + 2, 1).value = 'Cumplimiento = despachado ÷ contrato del lote completo, en TN (en unidades si ningún ítem del lote tiene peso).'
+  w2.getCell(last + 2, 1).value = 'Cumplimiento = despachado ÷ contrato del lote completo, en TN (en unidades si ningún ítem del lote tiene peso; «Mixta» = sin peso y con unidades distintas, no se suma).'
   w2.mergeCells(last + 2, 1, last + 2, cols2.length); w2.getCell(last + 2, 1).font = { size: 8, italic: true, color: { argb: MUTED } }
   return wb
 }

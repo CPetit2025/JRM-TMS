@@ -54,4 +54,8 @@ test('Excel: dos hojas horizontales, sin notas ni outlinePr (con ellos Excel no 
   assert.deepEqual(wb.worksheets.map(w => w.name), ['Avance por ítem', 'Cumplimiento por lote'])
   assert.ok(wb.worksheets.every(w => w.pageSetup.orientation === 'landscape'))
   assert.equal(wb.worksheets[0].getCell('A13').value, 16101)
+  assert.match(String(wb.worksheets[0].autoFilter && (wb.worksheets[0].autoFilter.ref || JSON.stringify(wb.worksheets[0].autoFilter))), /15|A11:/) // llega a las filas de datos
+  const mix = buildAvance([linea('16101-001', 'P', 10, 5), linea('16101-002', 'Q', 2, 1, { unidad: 'PAR' })], [])
+  const lote = xm.exports.buildHoja(mix, mix, { ot: '16101', cliente: null, corte: null, filtros: [], generado: new Date() }).lotes[0]
+  assert.equal(lote.medida, null); assert.equal(lote.despachado, null); assert.equal(lote.pct, null)
 })

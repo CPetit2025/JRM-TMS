@@ -87,9 +87,9 @@ export function AvanceExcelPreview({ hoja, open, onClose }: { hoja: HojaAvance; 
           {cabecera('CUMPLIMIENTO POR LOTE')}
           <table className="mt-3 border-collapse text-[11px] text-slate-900">
             <thead><tr>{['LOTE', 'ÍTEMS', 'SIN PESO', 'MEDIDA', 'CONTRATO', 'DESPACHADO', 'EN APT (LISTO)', 'POR PRODUCIR', 'CUMPLIMIENTO'].map(h => <th key={h} className="bg-[#002855] px-3 py-1.5 text-white">{h}</th>)}</tr></thead>
-            <tbody>{hoja.lotes.map((l, i) => { const f = (v: number) => (l.enTn ? v.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v.toLocaleString('es-PE'))
+            <tbody>{hoja.lotes.map((l, i) => { const f = (v: number | null) => (v === null ? '—' : l.enTn ? v.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : v.toLocaleString('es-PE'))
               return <tr key={l.lote} className={`border-b border-slate-200 ${i % 2 ? 'bg-[#f8fafc]' : ''}`}>
-                <td className="px-3 py-1 font-bold text-[#002855]">{l.lote}</td><td className="px-3 text-right">{l.n}</td><td className="px-3 text-right">{l.sinPeso || '—'}</td><td className="px-3 text-center">{l.enTn ? 'TN' : 'Und'}</td>
+                <td className="px-3 py-1 font-bold text-[#002855]">{l.lote}</td><td className="px-3 text-right">{l.n}</td><td className="px-3 text-right">{l.sinPeso || '—'}</td><td className="px-3 text-center">{l.medida ?? 'Mixta'}</td>
                 <td className="px-3 text-right">{f(l.contrato)}</td><td className="px-3 text-right">{f(l.despachado)}</td><td className="px-3 text-right">{f(l.apt)}</td><td className="px-3 text-right">{f(l.porProducir)}</td>
                 <td className="w-56 px-3"><div className="flex items-center gap-2"><span className="h-3 flex-1 bg-slate-100"><i className="block h-full bg-[#a9bedd]" style={{ width: `${(l.pct ?? 0) * 100}%` }} /></span><b>{l.pct === null ? '—' : `${(l.pct * 100).toFixed(1)}%`}</b></div></td></tr> })}</tbody>
           </table>
