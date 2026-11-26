@@ -6,7 +6,9 @@ export type FrRow = { area: string | null; fecha: string; tipo_actividad: string
   hora_salida: string | null; hora_llegada_cliente: string | null; espera_min: number | null; descarga_min: number | null; hora_salida_cliente: string | null
   hora_llegada_planta: string | null; total_min: number | null; km_inicial: number | null; km_cliente: number | null; km_cliente_fuente: string | null
   km_recorridos: number | null; km_planta: number | null; km_total: number | null; ocupacion_pct: number | null; ocupacion_fuente: string | null
-  peso_kg: number | null; peso_fuente: string | null; tipo_descarga: string; viaje: string | null; solicitud: string | null; estado_viaje: string }
+  peso_kg: number | null; peso_fuente: string | null; tipo_descarga: string; viaje: string | null; solicitud: string | null; estado_viaje: string
+  tiempos_fuente?: string | null; en_cliente_min?: number | null; llegada_fuente?: string | null; salida_cliente_fuente?: string | null
+  hora_salida_fuente?: string | null; hora_planta_fuente?: string | null }
 export type FrMeta = { from: string; to: string; filters: string }
 
 export const hora = (v: string | null) => v ? new Date(v).toLocaleTimeString('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false }) : ''
@@ -31,8 +33,10 @@ export const COLS: { h: string; v: (r: FrRow) => string | number; w: number; pdf
   { h: 'PESO (KG)', v: r => r.peso_kg ?? '', w: 10, pdf: 11 }, { h: 'TIPO DE DESCARGA', v: r => r.tipo_descarga, w: 15, pdf: 19 },
 ]
 export const estimated = (r: FrRow, h: string) => (h === 'KM/LLEGADA CLIENTE' && r.km_cliente_fuente === 'GPS') || (h === 'PESO (KG)' && r.peso_fuente === 'PACKING_LIST')
-  || (h === 'METRO CUBICO (%)' && r.ocupacion_fuente === 'CONDUCTOR')
-const nota = (r: FrRow) => [r.km_cliente_fuente === 'GPS' && 'km en cliente estimado con GPS', r.ocupacion_fuente === 'CONDUCTOR' && 'ocupación corregida por el conductor',
+  || (h === 'METRO CUBICO (%)' && r.ocupacion_fuente === 'CONDUCTOR') || (h === 'TIEMPO DE ENTREGA DESCARGA' && r.tiempos_fuente === 'ESTIMADO')
+// Horas tomadas del GPS (geocercas): medidas, no estimadas; se indican en la nota y en la leyenda
+const horasGps = (r: FrRow) => [r.hora_salida_fuente === 'GPS' && 'salida', r.llegada_fuente === 'GPS' && 'llegada', r.salida_cliente_fuente === 'GPS' && 'salida del cliente', r.hora_planta_fuente === 'GPS' && 'llegada a planta'].filter(Boolean) as string[]
+const nota = (r: FrRow) => [horasGps(r).length > 0 && `horas por GPS: ${horasGps(r).join(', ')}`, r.tiempos_fuente === 'ESTIMADO' && 'espera sin marcar; descarga estimada hasta el envío de la guía', r.tiempos_fuente === 'SIN_ESPERA' && 'sin espera (marcado por el conductor)', r.km_cliente_fuente === 'GPS' && 'km en cliente estimado con GPS', r.ocupacion_fuente === 'CONDUCTOR' && 'ocupación corregida por el conductor',
   r.peso_fuente === 'PACKING_LIST' && 'peso del packing list', `viaje ${r.viaje || '—'} · ${r.solicitud || '—'}`].filter(Boolean).join(' · ')
 
 const NAVY = '002855', AMBER = 'FEF3C7'

@@ -176,6 +176,11 @@ export function syncOfflineActions(): Promise<number> {
           })
           if (error) throw error
           if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó la guía')
+        } else if (action.type === 'delivery_mark_unload') {
+          // Inicio de descarga marcado en el teléfono (FR-DT.004)
+          const { data, error } = await supabase.rpc('delivery_mark_unload', { p_dispatch: action.payload.dispatch_id, p_request: action.payload.request_id, p_at: action.payload.at, p_no_wait: !!action.payload.no_wait })
+          if (error) throw error
+          if (!data?.success) throw new Error('El servidor no confirmó el inicio de descarga')
         } else if (action.type === 'delivery_reject_driver') {
           // Rechazo en destino guardado en el teléfono: sube las fotos a la carpeta de la entrega y lo registra
           const { data: auth } = await supabase.auth.getUser()
