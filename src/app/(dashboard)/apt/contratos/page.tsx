@@ -74,8 +74,10 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     return (c: Fila) => (!ots.size || ots.has(c.ot)) && (!clis.size || clis.has(c.cliente ?? ''))
   }, [selOt, selCli])
   const [ver, setVer] = useState<'ot' | 'producto'>('ot')
-  const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estado}` : 'contratos_producto|off',
-    () => ver === 'producto' ? invApi.contratosProducto(estado) : Promise.resolve(null))
+  // Con bodegas elegidas el estado depende de esas bodegas: se trae todo y se filtra aquí
+  const estServ = alms.length ? '' : estado
+  const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estServ}` : 'contratos_producto|off',
+    () => ver === 'producto' ? invApi.contratosProducto(estServ) : Promise.resolve(null))
   const rows = useMemo(() => {
     const f = filtro.trim().toUpperCase()
     const base: Fila[] = (ver === 'producto' ? pq.data?.filas : q.data?.contratos) ?? []
@@ -171,7 +173,9 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
 
 // Stock disponible de los lotes de una OT (y de un producto en la vista por producto) sin salir de la lista
 function StockLotes({ ot, producto, alms, onClose, onFicha }: { ot: string; producto?: string; alms: string[]; onClose: () => void; onFicha: () => void }) {
-  const r = useInvQuery(`stock-ot|${ot}|${producto ?? ''}`, () => invApi.stock({ q: producto ?? ot, ambito: 'apt', estado: 'comprometido', orden: 'kg', limit: 500, offset: 0 }))
+  // Se busca por la OT (va en el lote) con el tope del servidor; el producto y la bodega se filtran aquí
+  const r = useInvQuery(`stock-ot|${ot}`, () => invApi.stock({ q: ot, ambito: 'apt', estado: 'comprometido', orden: 'kg', limit: 2000, offset: 0 }))
+  const truncado = (r.data?.total ?? 0) > (r.data?.filas.length ?? 0)
   // La búsqueda del servidor es por texto: se dejan solo los lotes de esta OT (y sus subcontratos)
   const filas = (r.data?.filas ?? []).filter(f => (f.ot === ot || f.ot?.startsWith(`${ot}-`)) && (!producto || f.producto === producto)
     && (!alms.length || alms.includes(aptAlmacen(f.bodega) ?? '')))
@@ -180,6 +184,7 @@ function StockLotes({ ot, producto, alms, onClose, onFicha }: { ot: string; prod
     <Modal isOpen onClose={onClose} title={`Stock disponible · OT ${ot}`} maxWidth="max-w-5xl"
       footer={<button type="button" onClick={onFicha} className="min-h-9 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white">Ver ficha de la OT</button>}>
       <p className="mb-3 text-xs text-slate-500">{producto ? `Producto ${producto} · ` : ''}{alms.length ? `Bodegas ${alms.join(' · ')}` : '647 · 540 · ST'} · {fmtN(filas.length)} producto·lote · {fmtPeso(kg)}{r.data?.corte ? ` · corte ${fmtDate(r.data.corte)}` : ''}</p>
+      {truncado && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">La búsqueda superó {fmtN(r.data?.filas.length ?? 0)} filas: puede faltar stock; vea la ficha de la OT.</p>}
       {r.loading ? <LoadingBlock label="Calculando el stock…" /> : r.error ? <ErrorBlock message={r.error} onRetry={r.reload} /> :
         <Table empty={!filas.length} head={<tr><th className={th}>Bodega</th><th className={th}>Producto</th><th className={th}>Lote</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Ingreso</th><th className={th}>En bodega</th></tr>}>
           {filas.map(f => <tr key={`${f.bodega}|${f.producto}|${f.lote}`} className="hover:bg-slate-50">
