@@ -345,7 +345,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   const [waitReason, setWaitReason] = useState('REPUESTO')
   const [waits, setWaits] = useState<WaitLine[]>([])
   const [life, setLife] = useState<Lifecycle | null>(null)
-  const { hasAccess } = usePermissions()
+  const { hasAccess, role } = usePermissions()
   const canVerify = hasAccess('mantenimiento-liberacion')
   const [partForm, setPartForm] = useState({ part_id: '', quantity: '1' })
   const [budgetForm, setBudgetForm] = useState({ amount: '', reason: '' })
@@ -363,8 +363,8 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   const openWait = waits.find(w => !w.ended_at)
   const [uid, setUid] = useState<string | null>(null)
   useEffect(() => { void supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null)) }, [])
-  // Mismo criterio que work_order_executors(): quien ejecutó no puede verificar ni cerrar (segregación de funciones)
-  const isExecutor = !!uid && (life?.mechanic_id === uid || events.some(e => e.evento === 'ESTADO' && e.created_by === uid
+  // Mismo criterio que work_order_executors(): quien ejecutó no verifica ni cierra, salvo el Administrador
+  const isExecutor = !!uid && role !== 'admin' && (life?.mechanic_id === uid || events.some(e => e.evento === 'ESTADO' && e.created_by === uid
     && (e.estado_nuevo === 'EN_PROCESO' || e.estado_nuevo === 'TERMINADA') && e.estado_anterior !== 'VALIDACION'))
   const canVerifyThis = canVerify && !isExecutor
 
@@ -561,7 +561,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     PROGRAMADA: [['EN_PROCESO', 'Iniciar', <PlayCircle key="i" className="w-4 h-4" />], ...waitAction, ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
     EN_PROCESO: [['EN_ESPERA', 'En espera', <PauseCircle key="e" className="w-4 h-4" />], ['TERMINADA', 'Fin técnico', <Flag key="t" className="w-4 h-4" />]],
     EN_ESPERA: [['EN_PROCESO', 'Reanudar', <PlayCircle key="r" className="w-4 h-4" />], ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
-    // Verificar es del Jefe de Distribución; quien ejecutó no puede (lo impide el servidor)
+    // Verificar: Administrador, Jefe de Distribución o quien tenga mantenimiento-liberacion; quien ejecutó no (salvo Administrador)
     TERMINADA: [...(canVerifyThis ? [['VALIDACION', 'Verificar', <ShieldCheck key="v" className="w-4 h-4" />] as Act] : []), ['EN_PROCESO', 'Reabrir (retrabajo)', <PlayCircle key="r" className="w-4 h-4" />]],
     VALIDACION: [['EN_PROCESO', 'Retrabajo', <PlayCircle key="r" className="w-4 h-4" />]],
   }
@@ -601,8 +601,8 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
             )}
             {(order.status === 'TERMINADA' || order.status === 'VALIDACION') && !canVerifyThis && (
               <p role="status" className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                La unidad sigue en {order.vehicle_status} y no se puede programar hasta que el Jefe de Distribución {order.status === 'TERMINADA' ? 'verifique y luego cierre' : 'cierre'} la OT (Cerrar y liberar).
-                {isExecutor && canVerify && ' Usted ejecutó esta OT, así que debe hacerlo otra persona con el rol Jefe de Distribución.'}
+                La unidad sigue en {order.vehicle_status} y no se puede programar hasta que el Administrador, el Jefe de Distribución o quien tenga el permiso de liberación {order.status === 'TERMINADA' ? 'verifique y luego cierre' : 'cierre'} la OT (Cerrar y liberar).
+                {isExecutor && canVerify && ' Usted ejecutó esta OT, así que debe hacerlo otra persona con ese permiso o el Administrador.'}
               </p>
             )}
           </div>
