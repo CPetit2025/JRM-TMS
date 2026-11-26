@@ -15,6 +15,8 @@ import { fmtN, fmtN1, fmtPeso } from '@/lib/inventario/format'
 import type { InvContrato, InvContratoFila, InvContratoProductoFila } from '@/lib/inventario/types'
 import { fmtDate } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
+import { MultiSelect } from '@/components/apt/AptFilterBar'
+import { SortTh } from '@/components/apt/PphShared'
 
 // Contratos / OT en el APT (647 · 540 · ST): la lista de OT con avance, saldo y cumplimiento, y la ficha de una OT con
 // sus IDs (producto + glosa): ingresado, despachado, stock por almacén, último ingreso y última salida.
@@ -40,37 +42,55 @@ export default function ContratosPage() {
   )
 }
 
-type Orden = 'stock' | 'dias' | 'avance' | 'reciente' | 'ot'
 type Estado = '' | 'stock' | 'curso' | 'cerradas'
 // Por OT, o la misma fila desglosada por OT + producto (código y glosa)
 type Fila = InvContratoFila | InvContratoProductoFila
 const esProducto = (c: Fila): c is InvContratoProductoFila => 'producto' in c
+const TEXTO = ['ot', 'cliente', 'producto', 'glosa']
+const cmpTxt = (a: string, b: string) => a.localeCompare(b, 'es', { numeric: true })
 
 function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   const q = useInvQuery('contratos', () => invApi.contratos())
   const [filtro, setFiltro] = useState('')
   const [estado, setEstado] = useState<Estado>('stock')
-  const [orden, setOrden] = useState<Orden>('stock')
+  const [sort, setSort] = useState({ k: 'stock_kg', desc: true })
+  const [selOt, setSelOt] = useState<string[]>([])
+  const [selCli, setSelCli] = useState<string[]>([])
+  // Columna nueva: texto de A a Z, números de mayor a menor; misma columna: invierte
+  const onSort = (k: string) => setSort(s => ({ k, desc: s.k === k ? !s.desc : !TEXTO.includes(k) }))
+  const opts = useMemo(() => {
+    const cs = q.data?.contratos ?? []
+    return { ots: cs.map(c => c.ot).sort(cmpTxt), clientes: [...new Set(cs.map(c => c.cliente ?? '').filter(Boolean))].sort(cmpTxt), cliente: new Map(cs.map(c => [c.ot, c.cliente])) }
+  }, [q.data])
+  const pick = useMemo(() => {
+    const ots = new Set(selOt), clis = new Set(selCli)
+    return (c: Fila) => (!ots.size || ots.has(c.ot)) && (!clis.size || clis.has(c.cliente ?? ''))
+  }, [selOt, selCli])
   const [ver, setVer] = useState<'ot' | 'producto'>('ot')
   const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estado}` : 'contratos_producto|off',
     () => ver === 'producto' ? invApi.contratosProducto(estado) : Promise.resolve(null))
   const rows = useMemo(() => {
     const f = filtro.trim().toUpperCase()
     const base: Fila[] = (ver === 'producto' ? pq.data?.filas : q.data?.contratos) ?? []
-    const out = base.filter(c => (!f || c.ot.includes(f) || (c.cliente ?? '').toUpperCase().includes(f)
+    const out = base.filter(c => pick(c) && (!f || c.ot.includes(f) || (c.cliente ?? '').toUpperCase().includes(f)
         || (esProducto(c) && (c.producto.toUpperCase().includes(f) || (c.glosa ?? '').toUpperCase().includes(f))))
       && (estado === '' || (estado === 'stock' ? c.stock_kg > 0 : estado === 'curso' ? c.stock_kg > 0 || (c.avance_pct ?? 0) < 100 : c.stock_kg <= 0)))
-    const last = (c: Fila) => [c.ultima_salida, c.ultimo_ingreso].filter(Boolean).sort().pop() ?? ''
-    const by: Record<Orden, (a: Fila, b: Fila) => number> = {
-      stock: (a, b) => b.stock_kg - a.stock_kg, dias: (a, b) => (b.dias_stock ?? -1) - (a.dias_stock ?? -1),
-      avance: (a, b) => (a.avance_pct ?? 0) - (b.avance_pct ?? 0), reciente: (a, b) => last(b).localeCompare(last(a)), ot: (a, b) => b.ot.localeCompare(a.ot),
-    }
-    return out.sort(by[orden])
-  }, [q.data, pq.data, ver, filtro, estado, orden])
+    const val = (c: Fila) => (c as unknown as Record<string, string | number | null>)[sort.k] ?? null
+    // Vacíos siempre al final; empate por stock
+    return out.sort((a, b) => {
+      const x = val(a), y = val(b)
+      if (x === y) return b.stock_kg - a.stock_kg
+      if (x === null || x === '') return 1
+      if (y === null || y === '') return -1
+      const d = typeof x === 'number' && typeof y === 'number' ? x - y : cmpTxt(String(x), String(y))
+      return sort.desc ? -d : d
+    })
+  }, [q.data, pq.data, ver, filtro, estado, sort, pick])
   if (q.loading) return <LoadingBlock label="Cargando contratos…" />
   if (q.error) return <ErrorBlock message={q.error} onRetry={q.reload} />
-  const all = q.data?.contratos ?? []
-  if (!all.length) return <EmptyState title="Sin contratos en el APT">Aún no hay movimientos con lote de OT en los almacenes 647, 540 y ST.</EmptyState>
+  if (!q.data?.contratos.length) return <EmptyState title="Sin contratos en el APT">Aún no hay movimientos con lote de OT en los almacenes 647, 540 y ST.</EmptyState>
+  const all = q.data.contratos.filter(pick)
+  const H = (k: string, l: string, left = false) => <SortTh key={k} label={l} k={k} sort={sort.k} desc={sort.desc} onSort={onSort} align={left ? 'left' : 'right'} />
   const conStock = all.filter(c => c.stock_kg > 0)
   const stockKg = conStock.reduce((t, c) => t + c.stock_kg, 0)
   const viejas = conStock.filter(c => (c.dias_stock ?? 0) > 60)
@@ -84,7 +104,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   })) })
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-      <KpiCard label="OT con stock en el APT" value={fmtN(conStock.length)} tone="navy" hint={`de ${fmtN(all.length)} OT con movimiento · corte ${fmtDate(q.data?.corte)}`} />
+      <KpiCard label="OT con stock en el APT" value={fmtN(conStock.length)} tone="navy" hint={`de ${fmtN(all.length)} OT ${selOt.length || selCli.length ? 'seleccionadas' : 'con movimiento'} · corte ${fmtDate(q.data?.corte)}`} />
       <KpiCard label="Stock comprometido" value={fmtPeso(stockKg)} hint="Saldo de lotes de OT en 647 · 540 · ST" />
       <KpiCard label="OT con stock > 60 días" value={fmtN(viejas.length)} tone={viejas.length ? 'warn' : 'ok'} hint={fmtPeso(viejas.reduce((t, c) => t + c.stock_kg, 0))} />
       <KpiCard label="Despachos a tiempo" value={conFecha.length ? `${fmtN1(conFecha.reduce((t, c) => t + (c.a_tiempo_pct ?? 0), 0) / conFecha.length)} %` : '—'}
@@ -107,17 +127,20 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
             <option value="stock">Con stock en el APT</option><option value="curso">En curso (stock o avance &lt; 100 %)</option><option value="cerradas">Sin stock</option><option value="">Todas</option>
           </select>
         </label>
-        <label className="text-xs font-semibold text-slate-600">Ordenar por
-          <select value={orden} onChange={e => setOrden(e.target.value as Orden)} className="mt-1 block min-h-10 rounded-lg border border-slate-300 px-2 text-sm">
-            <option value="stock">Stock</option><option value="dias">Antigüedad del stock</option><option value="avance">Menor avance</option><option value="reciente">Movimiento más reciente</option><option value="ot">Número de OT</option>
-          </select>
-        </label>
+        <div className="text-xs font-semibold text-slate-600">Contratos
+          <div className="mt-1 flex gap-2">
+            <MultiSelect label="OT" options={opts.ots} value={selOt} onChange={setSelOt} searchable width="w-80"
+              render={o => <>{o} <span className="text-slate-400">· {opts.cliente.get(o) ?? '—'}</span></>} />
+            <MultiSelect label="Cliente" options={opts.clientes} value={selCli} onChange={setSelCli} searchable width="w-80" />
+          </div>
+        </div>
+        <p className="pb-2 text-[11px] text-slate-500">Clic en un encabezado para ordenar.</p>
       </div>
       {ver === 'producto' && pq.loading && <LoadingBlock label="Cargando el detalle por producto…" />}
       {ver === 'producto' && pq.error && <ErrorBlock message={pq.error} onRetry={pq.reload} />}
-      {!(ver === 'producto' && (pq.loading || pq.error)) && <Table empty={!rows.length} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th>{ver === 'producto' && <><th className={th}>Código</th><th className={th}>Glosa</th></>}<th className={`${th} text-right`}>Ingresado</th><th className={`${th} text-right`}>Despachado</th><th className={th}>Avance</th>
-        <th className={`${th} text-right`}>Stock</th><th className={`${th} text-right`}>647</th><th className={`${th} text-right`}>540</th><th className={`${th} text-right`}>ST</th><th className={th}>Días</th>
-        <th className={th}>Entrega</th><th className={`${th} text-right`}>A tiempo</th><th className={th}>Último ingreso</th><th className={th}>Última salida</th></tr>}>
+      {!(ver === 'producto' && (pq.loading || pq.error)) && <Table empty={!rows.length} head={<tr>{H('ot', 'OT', true)}{H('cliente', 'Cliente', true)}{ver === 'producto' && <>{H('producto', 'Código', true)}{H('glosa', 'Glosa', true)}</>}{H('ingresado_kg', 'Ingresado')}{H('despachado_kg', 'Despachado')}{H('avance_pct', 'Avance', true)}
+        {H('stock_kg', 'Stock')}{H('stock_647_kg', '647')}{H('stock_540_kg', '540')}{H('stock_st_kg', 'ST')}{H('dias_stock', 'Días', true)}
+        {H('fecha_entrega', 'Entrega', true)}{H('a_tiempo_pct', 'A tiempo')}{H('ultimo_ingreso', 'Último ingreso', true)}{H('ultima_salida', 'Última salida', true)}</tr>}>
         {rows.map(c => <tr key={esProducto(c) ? `${c.ot}|${c.producto}` : c.ot} className="hover:bg-slate-50">
           <td className={td}><button type="button" onClick={() => onOpen(c.ot)} className="font-bold text-[#002855] underline">{c.ot}</button>
             <p className="text-[10px] text-slate-500">{esProducto(c) ? '' : `${fmtN(c.productos)} ID · `}{fmtN(c.lotes)} lotes</p></td>
