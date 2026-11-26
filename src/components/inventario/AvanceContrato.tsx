@@ -8,7 +8,8 @@ import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { invApi } from '@/lib/inventario/api'
 import { fmtN } from '@/lib/inventario/format'
 import { fmtDate } from '@/lib/apt/format'
-import { exportAptXlsx } from '@/lib/apt/export'
+import { buildHoja } from '@/lib/inventario/avance-contrato-excel'
+import { AvanceExcelPreview } from '@/components/inventario/AvanceExcelPreview'
 import { BODEGAS, FILTRO_INICIAL, buildAvance, filtrarAvance, tn, totalAvance, type AvanceFila, type AvanceFiltro, type AvanceTotal } from '@/lib/inventario/avance-contrato'
 import type { InvContratoProducto } from '@/lib/inventario/types'
 
@@ -27,11 +28,11 @@ function Bar({ d, a, c }: { d: number; a: number; c: number }) {
 }
 
 /** Reporte único de la OT: cada ítem del contrato (ERP) con su avance, el saldo en el APT por bodega y lo que falta producir. */
-export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: string; productos: InvContratoProducto[]; onKardex?: (producto: string) => void }) {
+export function AvanceContrato({ q, ot, cliente, productos, onKardex }: { q: string; ot: string; cliente?: string | null; productos: InvContratoProducto[]; onKardex?: (producto: string) => void }) {
   const r = useInvQuery(`contrato-lineas|${q}`, () => invApi.contratoLineas(q))
   const [f, setF] = useState<AvanceFiltro>(FILTRO_INICIAL)
   const [vista, setVista] = useState<Vista>('both'), [agrupar, setAgrupar] = useState(true), [avanzado, setAvanzado] = useState(false)
-  const [cerrados, setCerrados] = useState<Set<string>>(new Set())
+  const [cerrados, setCerrados] = useState<Set<string>>(new Set()), [preview, setPreview] = useState(false)
   const todas = useMemo(() => buildAvance(r.data?.lineas ?? [], productos), [r.data, productos])
   const filas = useMemo(() => filtrarAvance(todas, f), [todas, f])
   const lotes = useMemo(() => [...new Set(todas.map(x => x.lote))], [todas])
@@ -76,20 +77,13 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
   </tr>
 
   const lotesVista = lotes.filter(l => filas.some(x => x.lote === l))
-  const exportar = () => exportAptXlsx(`avance-contrato-${ot}`, {
-    'Avance por ítem': filas.map(x => ({ Lote: x.lote, Ítem: x.item, ID: x.producto, Glosa: x.glosa ?? '', Unidad: x.unidad ?? '', 'Peso unit. kg': x.peso ?? '', 'Fuente peso': x.pesoFuente ?? 'Sin peso',
-      'Contrato und': x.contratado, 'Contrato TN': tn(x.contratado, x.peso), 'Despachado und': x.despachado, 'Despachado TN': tn(x.despachado, x.peso),
-      'Saldo und': x.saldo, 'Saldo TN': tn(x.saldo, x.peso), ...Object.fromEntries(BODEGAS.flatMap((b, i) => [[`APT ${b} und`, x.apt[i]], [`APT ${b} TN`, tn(x.apt[i], x.peso)]])),
-      'Por producir und': x.porProducir, 'Por producir TN': tn(x.porProducir, x.peso), 'Avance %': Math.round(x.avance * 1000) / 10, Estado: x.estado })),
-    'Cumplimiento por lote': lotesVista.map(l => { const t = totalAvance(todas.filter(x => x.lote === l))
-      return { Lote: l, Ítems: t.n, 'Sin peso': t.sinPeso, 'Contrato TN': t.tContratado, 'Despachado TN': t.tDespachado, 'En APT TN': t.tApt[0] + t.tApt[1] + t.tApt[2], 'Por producir TN': t.tPorProducir, 'Cumplimiento %': t.tContratado ? Math.round((t.tDespachado / t.tContratado) * 1000) / 10 : '' } }),
-  })
+  const hoja = preview ? buildHoja(filas, todas, { ot, cliente: cliente ?? null, corte: r.data?.corte ?? null, filtros: chips, generado: new Date() }) : null
 
   return <>
     <ChartCard title="Avance del contrato por ítem"
       subtitle={`${fmtN(todas.length)} ítems · ${fmtN(lotes.length)} lotes · mostrando ${fmtN(filas.length)} · Actualizable del ERP${r.data?.corte ? ` al ${fmtDate(r.data.corte)}` : ''} + stock del APT`}
       info="Contrato, despachado y saldo vienen del Actualizable del ERP. El stock de un ID compartido por varios ítems se asigna a los ítems con saldo en su orden (primero 647, luego 540 y ST). Por producir = saldo − stock asignado. Toneladas con el peso unitario del ERP o, si falta, el promedio del ID en el APT (s/p = sin peso)."
-      actions={<button type="button" onClick={exportar} className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]"><Download className="h-4 w-4" aria-hidden /> Excel</button>}>
+      actions={<button type="button" onClick={() => setPreview(true)} className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855]"><Download className="h-4 w-4" aria-hidden /> Excel (vista previa)</button>}>
       <div className="space-y-3 p-3">
         <div className="flex flex-wrap items-center gap-2">
           <input value={f.q} onChange={e => set({ q: e.target.value })} placeholder="Buscar ítem, ID o glosa" aria-label="Buscar ítem, ID o glosa" className={`w-64 ${field}`} />
@@ -169,5 +163,6 @@ export function AvanceContrato({ q, ot, productos, onKardex }: { q: string; ot: 
           </div> })}
       </div>
     </ChartCard>
+    {hoja && <AvanceExcelPreview hoja={hoja} open={preview} onClose={() => setPreview(false)} />}
   </>
 }

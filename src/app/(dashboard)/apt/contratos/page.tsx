@@ -189,7 +189,7 @@ function Ficha({ q, onOpen }: { q: string; onOpen: (q: string) => void }) {
         hint={s.fecha_entrega_min ? `Entrega comprometida ${fmtDate(s.fecha_entrega_min)}${s.fecha_entrega_max && s.fecha_entrega_max !== s.fecha_entrega_min ? ` – ${fmtDate(s.fecha_entrega_max)}` : ''}` : 'Sin fecha de entrega en las guías'} />
       <KpiCard label="Movimiento" value={fmtDate(s.ultima_salida ?? s.ultimo_ingreso)} hint={`Primer ingreso ${fmtDate(s.primer_ingreso)} · último ingreso ${fmtDate(s.ultimo_ingreso)} · última salida ${fmtDate(s.ultima_salida)}`} />
     </div>
-    <AvanceContrato q={q} ot={d.ot} productos={d.productos ?? []} onKardex={verKardex} />
+    <AvanceContrato q={q} ot={d.ot} cliente={s.cliente} productos={d.productos ?? []} onKardex={verKardex} />
     <div id="kardex" className="scroll-mt-4"><Kardex ot={d.ot} productos={d.productos ?? []} producto={kardexId} onProducto={setKardexId} /></div>
     <ChartCard title="Guías de despacho" subtitle={`${fmtN(d.guias?.length ?? 0)} guías · viaje del TMS cuando la guía está registrada en Documentos`}>
       <Table empty={!d.guias?.length} head={<tr><th className={th}>Guía</th><th className={th}>Fecha</th><th className={th}>Almacén</th><th className={th}>Cliente</th><th className={`${th} text-right`}>Peso</th>
