@@ -76,7 +76,7 @@ interface CostLine { id: string; cost_type: string; amount: number; quantity: nu
   stage: CostStage; estimated_amount: number | null; quoted_amount: number | null; authorized_amount: number | null; invoiced_amount: number | null; paid_amount: number | null
   igv_amount: number; currency: string; original_amount: number | null; exchange_rate: number | null }
 interface WaitLine { id: string; reason: string; started_at: string; ended_at: string | null; notes: string | null }
-interface Lifecycle { finished_at: string | null; validated_at: string | null; due_date: string | null; due_km: number | null; due_hours: number | null; preventive_compliance: string | null }
+interface Lifecycle { mechanic_id: string | null; finished_at: string | null; validated_at: string | null; due_date: string | null; due_km: number | null; due_hours: number | null; preventive_compliance: string | null }
 const COST_STAGES: CostStage[] = ['ESTIMADO', 'COTIZADO', 'AUTORIZADO', 'FACTURADO', 'PAGADO']
 const STAGE_COLUMN = { ESTIMADO: 'estimated_amount', COTIZADO: 'quoted_amount', AUTORIZADO: 'authorized_amount', FACTURADO: 'invoiced_amount', PAGADO: 'paid_amount' } as const
 const WAIT_REASONS = [['REPUESTO', 'Repuesto'], ['AUTORIZACION', 'Autorización'], ['TALLER', 'Taller / proveedor']] as const
@@ -356,11 +356,17 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
   const loadLifecycle = useCallback(() => {
     void supabase.from('maintenance_work_order_waits').select('id, reason, started_at, ended_at, notes').eq('work_order_id', order.id).order('started_at')
       .then(({ data }) => setWaits((data || []) as WaitLine[]))
-    void supabase.from('maintenance_work_orders').select('finished_at, validated_at, due_date, due_km, due_hours, preventive_compliance').eq('id', order.id).maybeSingle()
+    void supabase.from('maintenance_work_orders').select('mechanic_id, finished_at, validated_at, due_date, due_km, due_hours, preventive_compliance').eq('id', order.id).maybeSingle()
       .then(({ data }) => setLife(data as Lifecycle | null))
   }, [order.id])
   useEffect(() => { loadLifecycle() }, [loadLifecycle, order.status])
   const openWait = waits.find(w => !w.ended_at)
+  const [uid, setUid] = useState<string | null>(null)
+  useEffect(() => { void supabase.auth.getUser().then(({ data }) => setUid(data.user?.id ?? null)) }, [])
+  // Mismo criterio que work_order_executors(): quien ejecutó no puede verificar ni cerrar (segregación de funciones)
+  const isExecutor = !!uid && (life?.mechanic_id === uid || events.some(e => e.evento === 'ESTADO' && e.created_by === uid
+    && (e.estado_nuevo === 'EN_PROCESO' || e.estado_nuevo === 'TERMINADA') && e.estado_anterior !== 'VALIDACION'))
+  const canVerifyThis = canVerify && !isExecutor
 
   const loadCosts = useCallback(() => supabase.from('work_order_costs').select('id, cost_type, amount, quantity, description, document_number, created_at, stage, estimated_amount, quoted_amount, authorized_amount, invoiced_amount, paid_amount, igv_amount, currency, original_amount, exchange_rate')
     .eq('work_order_id', order.id).order('created_at').then(({ data }) => setCosts((data || []) as CostLine[])), [order.id])
@@ -556,7 +562,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
     EN_PROCESO: [['EN_ESPERA', 'En espera', <PauseCircle key="e" className="w-4 h-4" />], ['TERMINADA', 'Fin técnico', <Flag key="t" className="w-4 h-4" />]],
     EN_ESPERA: [['EN_PROCESO', 'Reanudar', <PlayCircle key="r" className="w-4 h-4" />], ['CANCELADA', 'Cancelar', <XCircle key="c" className="w-4 h-4" />]],
     // Verificar es del Jefe de Distribución; quien ejecutó no puede (lo impide el servidor)
-    TERMINADA: [...(canVerify ? [['VALIDACION', 'Verificar', <ShieldCheck key="v" className="w-4 h-4" />] as Act] : []), ['EN_PROCESO', 'Reabrir (retrabajo)', <PlayCircle key="r" className="w-4 h-4" />]],
+    TERMINADA: [...(canVerifyThis ? [['VALIDACION', 'Verificar', <ShieldCheck key="v" className="w-4 h-4" />] as Act] : []), ['EN_PROCESO', 'Reabrir (retrabajo)', <PlayCircle key="r" className="w-4 h-4" />]],
     VALIDACION: [['EN_PROCESO', 'Retrabajo', <PlayCircle key="r" className="w-4 h-4" />]],
   }
   const field = 'border rounded-lg px-2 py-1.5 text-sm'
@@ -583,7 +589,7 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                 {icon}{label}
               </button>
             ))}
-            {order.status === 'VALIDACION' && canVerify && (
+            {order.status === 'VALIDACION' && canVerifyThis && (
               <button disabled={busy} onClick={() => transition('CERRADA')} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm flex items-center gap-1">
                 <Lock className="w-4 h-4" /> Cerrar y liberar
               </button>
@@ -593,7 +599,12 @@ function WorkOrderDetail({ order, providers, people, onClose, onChanged }: {
                 <PlayCircle className="w-4 h-4" /> Terminar espera ({openWait.reason.toLowerCase()})
               </button>
             )}
-            {order.status === 'TERMINADA' && !canVerify && <span className="self-center text-xs text-slate-500">Pendiente de verificación del Jefe de Distribución.</span>}
+            {(order.status === 'TERMINADA' || order.status === 'VALIDACION') && !canVerifyThis && (
+              <p role="status" className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                La unidad sigue en {order.vehicle_status} y no se puede programar hasta que el Jefe de Distribución {order.status === 'TERMINADA' ? 'verifique y luego cierre' : 'cierre'} la OT (Cerrar y liberar).
+                {isExecutor && canVerify && ' Usted ejecutó esta OT, así que debe hacerlo otra persona con el rol Jefe de Distribución.'}
+              </p>
+            )}
           </div>
         )}
 
