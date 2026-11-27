@@ -114,7 +114,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <KpiCard label="OT con stock en el APT" value={fmtN(conStock.length)} tone="navy" hint={`de ${fmtN(all.length)} OT ${selOt.length || selCli.length ? 'seleccionadas' : 'con movimiento'} · corte ${fmtDate(q.data?.corte)}`} />
-      <KpiCard label="Stock comprometido" value={fmtPeso(stockKg)} hint="Saldo de lotes de OT en 647 · 540 · ST" />
+      <KpiCard label="Stock comprometido" value={fmtPeso(stockKg)} hint={`Saldo de lotes de OT en ${alms.length ? alms.join(" · ") : "647 · 540 · ST"}`} />
       <KpiCard label="OT con stock > 60 días" value={fmtN(viejas.length)} tone={viejas.length ? 'warn' : 'ok'} hint={fmtPeso(viejas.reduce((t, c) => t + sk(c), 0))} />
       <KpiCard label="Despachos a tiempo" value={conFecha.length ? `${fmtN1(conFecha.reduce((t, c) => t + (c.a_tiempo_pct ?? 0), 0) / conFecha.length)} %` : '—'}
         hint="Promedio por OT · guía con fecha ≤ entrega comprometida" />
@@ -174,10 +174,12 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
 // Stock disponible de los lotes de una OT (y de un producto en la vista por producto) sin salir de la lista
 function StockLotes({ ot, producto, alms, onClose, onFicha }: { ot: string; producto?: string; alms: string[]; onClose: () => void; onFicha: () => void }) {
   // Se busca por la OT (va en el lote) con el tope del servidor; el producto y la bodega se filtran aquí
-  const r = useInvQuery(`stock-ot|${ot}`, () => invApi.stock({ q: ot, ambito: 'apt', estado: 'comprometido', orden: 'kg', limit: 2000, offset: 0 }))
+  // Sin filtro «comprometido»: inv_stock deja sin OT lotes como 16067-S004D que la lista sí cuenta
+  const r = useInvQuery(`stock-ot|${ot}`, () => invApi.stock({ q: ot, ambito: 'apt', orden: 'kg', limit: 2000, offset: 0 }))
   const truncado = (r.data?.total ?? 0) > (r.data?.filas.length ?? 0)
   // La búsqueda del servidor es por texto: se dejan solo los lotes de esta OT (y sus subcontratos)
-  const filas = (r.data?.filas ?? []).filter(f => (f.ot === ot || f.ot?.startsWith(`${ot}-`)) && (!producto || f.producto === producto)
+  const deOt = (s: string | null) => !!s && s.toUpperCase().startsWith(ot) && !/\d/.test(s[ot.length] ?? '')
+  const filas = (r.data?.filas ?? []).filter(f => (deOt(f.ot) || deOt(f.lote)) && (!producto || f.producto === producto)
     && (!alms.length || alms.includes(aptAlmacen(f.bodega) ?? '')))
   const kg = filas.reduce((t, f) => t + (f.kg_conocido ? f.kg : 0), 0)
   return (
@@ -190,7 +192,7 @@ function StockLotes({ ot, producto, alms, onClose, onFicha }: { ot: string; prod
           {filas.map(f => <tr key={`${f.bodega}|${f.producto}|${f.lote}`} className="hover:bg-slate-50">
             <td className={td}><p className="font-semibold text-slate-800">{f.bodega}</p><AlmacenTag almacen={aptAlmacen(f.bodega)} /></td>
             <td className={td}><p className="font-mono text-[11px] text-slate-500">{f.producto}</p><p className="max-w-72 text-slate-800">{f.glosa ?? '—'}</p></td>
-            <td className={td}><p className="font-semibold">{f.lote ?? '—'}</p><p className="text-[10px] text-slate-500">OT {f.ot}</p></td>
+            <td className={td}><p className="font-semibold">{f.lote ?? '—'}</p><p className="text-[10px] text-slate-500">OT {f.ot ?? ot}</p></td>
             <td className={tdNum}>{fmtQty(f.qty)} <span className="text-slate-400">{f.unidad ?? ''}</span></td>
             <td className={tdNum}>{f.kg_conocido ? fmtPeso(f.kg) : <span className="text-slate-400">Sin peso</span>}</td>
             <td className={td}>{f.fecha_ingreso ? fmtDate(f.fecha_ingreso) : <span className="text-amber-700">Saldo inicial</span>}</td>
