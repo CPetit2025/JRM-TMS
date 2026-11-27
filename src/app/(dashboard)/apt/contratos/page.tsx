@@ -16,6 +16,7 @@ import { fmtN, fmtN1, fmtPeso } from '@/lib/inventario/format'
 import type { AptAlmacen, InvContrato, InvContratoFila, InvContratoProductoFila } from '@/lib/inventario/types'
 import { fmtDate } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
+import { motivosSincerar } from '@/lib/inventario/avance-contrato'
 import { MultiSelect } from '@/components/apt/AptFilterBar'
 import { SortTh } from '@/components/apt/PphShared'
 
@@ -43,7 +44,7 @@ export default function ContratosPage() {
   )
 }
 
-type Estado = '' | 'stock' | 'curso' | 'cerradas'
+type Estado = '' | 'stock' | 'curso' | 'cerradas' | 'sincerar'
 // Por OT, o la misma fila desglosada por OT + producto (código y glosa)
 type Fila = InvContratoFila | InvContratoProductoFila
 const esProducto = (c: Fila): c is InvContratoProductoFila => 'producto' in c
@@ -75,7 +76,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   }, [selOt, selCli])
   const [ver, setVer] = useState<'ot' | 'producto'>('ot')
   // Con bodegas elegidas el estado depende de esas bodegas: se trae todo y se filtra aquí
-  const estServ = alms.length ? '' : estado
+  const estServ = alms.length || estado === 'sincerar' ? '' : estado
   const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estServ}` : 'contratos_producto|off',
     () => ver === 'producto' ? invApi.contratosProducto(estServ) : Promise.resolve(null))
   const rows = useMemo(() => {
@@ -83,7 +84,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     const base: Fila[] = (ver === 'producto' ? pq.data?.filas : q.data?.contratos) ?? []
     const out = base.filter(c => pick(c) && (!f || c.ot.includes(f) || (c.cliente ?? '').toUpperCase().includes(f)
         || (esProducto(c) && (c.producto.toUpperCase().includes(f) || (c.glosa ?? '').toUpperCase().includes(f))))
-      && (estado === '' || (estado === 'stock' ? sk(c) > 0 : estado === 'curso' ? sk(c) > 0 || (c.avance_pct ?? 0) < 100 : sk(c) <= 0)))
+      && (estado === '' || (estado === 'sincerar' ? motivosSincerar(c, sk(c), q.data?.corte).length > 0 : estado === 'stock' ? sk(c) > 0 : estado === 'curso' ? sk(c) > 0 || (c.avance_pct ?? 0) < 100 : sk(c) <= 0)))
     const val = (c: Fila) => sort.k === 'stock_kg' ? sk(c) : (c as unknown as Record<string, string | number | null>)[sort.k] ?? null
     // Vacíos siempre al final; empate por stock
     return out.sort((a, b) => {
@@ -109,7 +110,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     ...(esProducto(c) ? { 'Código producto': c.producto, Glosa: c.glosa ?? '', Unidad: c.unidad ?? '' } : { Productos: c.productos }), Lotes: c.lotes, Guías: c.guias, 'Ingresado kg': c.ingresado_kg, 'Despachado kg': c.despachado_kg,
     'Avance %': c.avance_pct ?? '', 'Stock kg': sk(c), ...(ver1('647') ? { 'Stock 647 kg': c.stock_647_kg } : {}), ...(ver1('540') ? { 'Stock 540 kg': c.stock_540_kg } : {}), ...(ver1('ST') ? { 'Stock ST kg': c.stock_st_kg } : {}),
     'Días en stock': c.dias_stock ?? '', 'Entrega comprometida': c.fecha_entrega ?? '', 'A tiempo %': c.a_tiempo_pct ?? '',
-    'Primer ingreso': c.primer_ingreso ?? '', 'Último ingreso': c.ultimo_ingreso ?? '', 'Última salida': c.ultima_salida ?? '',
+    'Primer ingreso': c.primer_ingreso ?? '', 'Último ingreso': c.ultimo_ingreso ?? '', 'Última salida': c.ultima_salida ?? '', 'Candidato a sincerar': motivosSincerar(c, sk(c), q.data?.corte).join(' · '),
   })) })
   return <>
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
@@ -133,7 +134,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
         </label>
         <label className="text-xs font-semibold text-slate-600">Estado
           <select value={estado} onChange={e => { setEstado(e.target.value as Estado) }} className="mt-1 block min-h-10 rounded-lg border border-slate-300 px-2 text-sm">
-            <option value="stock">Con stock en el APT</option><option value="curso">En curso (stock o avance &lt; 100 %)</option><option value="cerradas">Sin stock</option><option value="">Todas</option>
+            <option value="stock">Con stock en el APT</option><option value="curso">En curso (stock o avance &lt; 100 %)</option><option value="cerradas">Sin stock</option><option value="sincerar">Candidatos a sincerar</option><option value="">Todas</option>
           </select>
         </label>
         <div className="text-xs font-semibold text-slate-600">Contratos
@@ -150,7 +151,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
       {ver === 'producto' && pq.error && <ErrorBlock message={pq.error} onRetry={pq.reload} />}
       {!(ver === 'producto' && (pq.loading || pq.error)) && <Table empty={!rows.length} head={<tr>{H('ot', 'OT', true)}{H('cliente', 'Cliente', true)}{ver === 'producto' && <>{H('producto', 'Código', true)}{H('glosa', 'Glosa', true)}</>}{H('ingresado_kg', 'Ingresado')}{H('despachado_kg', 'Despachado')}{H('avance_pct', 'Avance', true)}
         {H('stock_kg', 'Stock')}{ver1('647') && H('stock_647_kg', '647')}{ver1('540') && H('stock_540_kg', '540')}{ver1('ST') && H('stock_st_kg', 'ST')}{H('dias_stock', 'Días', true)}
-        {H('fecha_entrega', 'Entrega', true)}{H('a_tiempo_pct', 'A tiempo')}{H('ultimo_ingreso', 'Último ingreso', true)}{H('ultima_salida', 'Última salida', true)}</tr>}>
+        {H('fecha_entrega', 'Entrega', true)}{H('a_tiempo_pct', 'A tiempo')}{H('ultimo_ingreso', 'Último ingreso', true)}{H('ultima_salida', 'Última salida', true)}{estado === 'sincerar' && <th className={th}>Por qué</th>}</tr>}>
         {rows.map(c => <tr key={esProducto(c) ? `${c.ot}|${c.producto}` : c.ot} className="hover:bg-slate-50">
           <td className={td}><button type="button" onClick={() => setLotesDe({ ot: c.ot, producto: esProducto(c) ? c.producto : undefined })} title="Ver el stock disponible de la OT" className="font-bold text-[#002855] underline">{c.ot}</button>
             <p className="text-[10px] text-slate-500">{esProducto(c) ? '' : `${fmtN(c.productos)} ID · `}<button type="button" onClick={() => setLotesDe({ ot: c.ot, producto: esProducto(c) ? c.producto : undefined })} title="Ver el stock disponible de los lotes" className="font-semibold text-[#002855] underline">{fmtN(c.lotes)} lotes</button></p></td>
@@ -164,6 +165,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
           <td className={td}>{sk(c) > 0 ? <DiasPill dias={c.dias_stock} /> : '—'}</td>
           <td className={td}>{fmtDate(c.fecha_entrega)}</td><td className={tdNum}>{c.a_tiempo_pct === null ? '—' : `${fmtN(c.a_tiempo_pct)} %`}</td>
           <td className={td}>{fmtDate(c.ultimo_ingreso)}</td><td className={td}>{fmtDate(c.ultima_salida)}</td>
+          {estado === 'sincerar' && <td className={td}><div className="flex max-w-56 flex-wrap gap-1">{motivosSincerar(c, sk(c), q.data?.corte).map(m => <span key={m} className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">{m}</span>)}</div></td>}
         </tr>)}
       </Table>}
     </ChartCard>

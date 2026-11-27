@@ -89,3 +89,18 @@ export function conItems(filas: InvStockRow[], lineas: Linea[]): StockItemFila[]
       ultimo_despacho: ls.map(l => l.ultimo_despacho).filter((d): d is string => !!d).sort().pop() ?? null }
   })
 }
+
+// Candidatos a sincerar (stock que quizá ya no existe físicamente): señales sobre los datos que la lista ya carga
+const UN_ANIO = 365
+export function motivosSincerar(c: { despachado_kg: number; ingresado_kg: number; avance_pct: number | null; dias_stock: number | null
+  ultimo_ingreso: string | null; ultima_salida: string | null }, stock: number, corte: string | null | undefined): string[] {
+  if (stock <= 0) return []
+  const m: string[] = []
+  if (c.despachado_kg > c.ingresado_kg) m.push('Despachado > ingresado')
+  if ((c.avance_pct ?? 0) >= 100) m.push('Avance 100 %')
+  const last = [c.ultimo_ingreso, c.ultima_salida].filter((d): d is string => !!d).sort().pop()
+  const ref = corte ? Date.parse(corte) : Date.now()
+  if (!last || (ref - Date.parse(last)) / 86400000 > UN_ANIO) m.push('Sin movimiento > 1 año')
+  else if ((c.dias_stock ?? 0) > UN_ANIO) m.push('Stock > 1 año')
+  return m
+}

@@ -81,3 +81,14 @@ test('conItems: 16188-S1 = 16188-S001 (como erp_doc_key) y S1 no toma S10', () =
   const [s1, s10] = conItems([st('16188-S001D'), st('16188-S10')], ls)
   assert.equal(s1.items, '16188-002'); assert.equal(s10.items, '16188-001')
 })
+
+test('motivosSincerar: sin stock no es candidato; señales de despachado, avance y antigüedad', () => {
+  const { motivosSincerar } = mod.exports
+  const c = { despachado_kg: 0, ingresado_kg: 10, avance_pct: 50, dias_stock: 10, ultimo_ingreso: '2026-11-01', ultima_salida: null }
+  const corte = '2026-11-27'
+  assert.deepEqual(motivosSincerar({ ...c, despachado_kg: 99 }, 0, corte), [])
+  assert.deepEqual(motivosSincerar(c, 5, corte), [])
+  assert.deepEqual(motivosSincerar({ ...c, despachado_kg: 20, avance_pct: 100 }, 5, corte), ['Despachado > ingresado', 'Avance 100 %'])
+  assert.deepEqual(motivosSincerar({ ...c, ultimo_ingreso: '2025-01-10', ultima_salida: '2025-06-01' }, 5, corte), ['Sin movimiento > 1 año'])
+  assert.deepEqual(motivosSincerar({ ...c, dias_stock: 400 }, 5, corte), ['Stock > 1 año'])
+})
