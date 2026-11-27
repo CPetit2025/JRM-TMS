@@ -59,3 +59,16 @@ test('Excel: dos hojas horizontales, sin notas ni outlinePr (con ellos Excel no 
   const lote = xm.exports.buildHoja(mix, mix, { ot: '16101', cliente: null, corte: null, filtros: [], generado: new Date() }).lotes[0]
   assert.equal(lote.medida, null); assert.equal(lote.despachado, null); assert.equal(lote.pct, null)
 })
+
+test('conItems: ítems del lote más específico; sin coincidencia de lote, todos los del producto', () => {
+  const { conItems } = mod.exports
+  const st = (lote, producto) => ({ bodega: '647-04 ALM PT', kind: 'apt', producto, glosa: null, lote, ot: null, cliente: null, unidad: 'UND', qty: 1, kg: 1, kg_conocido: true,
+    fecha_ingreso: null, fecha_origen: null, dias_bodega: null, dias_origen: null, inferido: 0, foto: 0, capas: 1 })
+  const ls = [linea('16188-001', 'A', 10, 4, { documento: '16188', ultimo_despacho: '2026-10-01' }), linea('16188-002', 'A', 5, 5, { documento: '16188-S002', ultimo_despacho: '2026-11-01' }),
+    linea('16188-003', 'B', 7, 2, { documento: '16188', ultimo_despacho: '2026-09-01' }), linea('16188-004', 'B', 3, 0, { documento: '16188' })]
+  const [madre, sub, b, sinItem] = conItems([st('16188', 'A'), st('16188-S002D', 'A'), st('16188-E002', 'B'), st('16188', 'Z')], ls)
+  assert.equal(madre.items, '16188-001'); assert.equal(madre.pendiente, 6); assert.equal(madre.despachado, 4)
+  assert.equal(sub.items, '16188-002'); assert.equal(sub.pendiente, 0); assert.equal(sub.ultimo_despacho, '2026-11-01')
+  assert.equal(b.items, '16188-003, 16188-004'); assert.equal(b.pendiente, 8); assert.equal(b.ultimo_despacho, '2026-09-01')
+  assert.equal(sinItem.items, ''); assert.equal(sinItem.pendiente, null)
+})
