@@ -6,13 +6,14 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, Download, Search } from 'lucide-react'
 import { ChartCard, EmptyState, ErrorBlock, InlineBar, KpiCard, LoadingBlock } from '@/components/apt/ui'
 import { DiasPill, Table, td, tdNum, th } from '@/components/inventario/parts'
-import { ALMACEN_LABEL, AlmacenTag } from '@/components/inventario/ambito'
+import { ALMACENES, ALMACEN_LABEL, AlmacenTag, aptAlmacen } from '@/components/inventario/ambito'
+import { Modal } from '@/components/ui/modal'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { Kardex } from '@/components/inventario/Kardex'
 import { AvanceContrato } from '@/components/inventario/AvanceContrato'
 import { invApi } from '@/lib/inventario/api'
-import { fmtN, fmtN1, fmtPeso } from '@/lib/inventario/format'
-import type { InvContrato, InvContratoFila, InvContratoProductoFila } from '@/lib/inventario/types'
+import { fmtN, fmtN1, fmtPeso, fmtQty } from '@/lib/inventario/format'
+import type { AptAlmacen, InvContrato, InvContratoFila, InvContratoProductoFila } from '@/lib/inventario/types'
 import { fmtDate } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
 import { MultiSelect } from '@/components/apt/AptFilterBar'
@@ -48,6 +49,7 @@ type Fila = InvContratoFila | InvContratoProductoFila
 const esProducto = (c: Fila): c is InvContratoProductoFila => 'producto' in c
 const TEXTO = ['ot', 'cliente', 'producto', 'glosa']
 const cmpTxt = (a: string, b: string) => a.localeCompare(b, 'es', { numeric: true })
+const KG = { '647': 'stock_647_kg', '540': 'stock_540_kg', ST: 'stock_st_kg' } as const
 
 function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   const q = useInvQuery('contratos', () => invApi.contratos())
@@ -56,6 +58,11 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   const [sort, setSort] = useState({ k: 'stock_kg', desc: true })
   const [selOt, setSelOt] = useState<string[]>([])
   const [selCli, setSelCli] = useState<string[]>([])
+  // Bodegas elegidas: el stock, el estado, el orden, los KPIs y el Excel cuentan solo esas
+  const [alms, setAlms] = useState<string[]>([])
+  const [lotesDe, setLotesDe] = useState<{ ot: string; producto?: string } | null>(null)
+  const sk = useMemo(() => (c: Fila) => alms.length ? alms.reduce((t, a) => t + c[KG[a as AptAlmacen]], 0) : c.stock_kg, [alms])
+  const ver1 = (a: AptAlmacen) => !alms.length || alms.includes(a)
   // Columna nueva: texto de A a Z, números de mayor a menor; misma columna: invierte
   const onSort = (k: string) => setSort(s => ({ k, desc: s.k === k ? !s.desc : !TEXTO.includes(k) }))
   const opts = useMemo(() => {
@@ -67,38 +74,40 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     return (c: Fila) => (!ots.size || ots.has(c.ot)) && (!clis.size || clis.has(c.cliente ?? ''))
   }, [selOt, selCli])
   const [ver, setVer] = useState<'ot' | 'producto'>('ot')
-  const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estado}` : 'contratos_producto|off',
-    () => ver === 'producto' ? invApi.contratosProducto(estado) : Promise.resolve(null))
+  // Con bodegas elegidas el estado depende de esas bodegas: se trae todo y se filtra aquí
+  const estServ = alms.length ? '' : estado
+  const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estServ}` : 'contratos_producto|off',
+    () => ver === 'producto' ? invApi.contratosProducto(estServ) : Promise.resolve(null))
   const rows = useMemo(() => {
     const f = filtro.trim().toUpperCase()
     const base: Fila[] = (ver === 'producto' ? pq.data?.filas : q.data?.contratos) ?? []
     const out = base.filter(c => pick(c) && (!f || c.ot.includes(f) || (c.cliente ?? '').toUpperCase().includes(f)
         || (esProducto(c) && (c.producto.toUpperCase().includes(f) || (c.glosa ?? '').toUpperCase().includes(f))))
-      && (estado === '' || (estado === 'stock' ? c.stock_kg > 0 : estado === 'curso' ? c.stock_kg > 0 || (c.avance_pct ?? 0) < 100 : c.stock_kg <= 0)))
-    const val = (c: Fila) => (c as unknown as Record<string, string | number | null>)[sort.k] ?? null
+      && (estado === '' || (estado === 'stock' ? sk(c) > 0 : estado === 'curso' ? sk(c) > 0 || (c.avance_pct ?? 0) < 100 : sk(c) <= 0)))
+    const val = (c: Fila) => sort.k === 'stock_kg' ? sk(c) : (c as unknown as Record<string, string | number | null>)[sort.k] ?? null
     // Vacíos siempre al final; empate por stock
     return out.sort((a, b) => {
       const x = val(a), y = val(b)
-      if (x === y) return b.stock_kg - a.stock_kg
+      if (x === y) return sk(b) - sk(a)
       if (x === null || x === '') return 1
       if (y === null || y === '') return -1
       const d = typeof x === 'number' && typeof y === 'number' ? x - y : cmpTxt(String(x), String(y))
       return sort.desc ? -d : d
     })
-  }, [q.data, pq.data, ver, filtro, estado, sort, pick])
+  }, [q.data, pq.data, ver, filtro, estado, sort, pick, sk])
   if (q.loading) return <LoadingBlock label="Cargando contratos…" />
   if (q.error) return <ErrorBlock message={q.error} onRetry={q.reload} />
   if (!q.data?.contratos.length) return <EmptyState title="Sin contratos en el APT">Aún no hay movimientos con lote de OT en los almacenes 647, 540 y ST.</EmptyState>
   const all = q.data.contratos.filter(pick)
   const H = (k: string, l: string, left = false) => <SortTh key={k} label={l} k={k} sort={sort.k} desc={sort.desc} onSort={onSort} align={left ? 'left' : 'right'} />
-  const conStock = all.filter(c => c.stock_kg > 0)
-  const stockKg = conStock.reduce((t, c) => t + c.stock_kg, 0)
+  const conStock = all.filter(c => sk(c) > 0)
+  const stockKg = conStock.reduce((t, c) => t + sk(c), 0)
   const viejas = conStock.filter(c => (c.dias_stock ?? 0) > 60)
   const conFecha = all.filter(c => c.a_tiempo_pct !== null)
   const exportar = () => exportAptXlsx(`contratos-${ver === 'producto' ? 'producto-' : ''}apt-${q.data?.corte ?? ''}`, { [ver === 'producto' ? 'Por producto' : 'Contratos']: rows.map(c => ({
     OT: c.ot, Cliente: c.cliente ?? '',
     ...(esProducto(c) ? { 'Código producto': c.producto, Glosa: c.glosa ?? '', Unidad: c.unidad ?? '' } : { Productos: c.productos }), Lotes: c.lotes, Guías: c.guias, 'Ingresado kg': c.ingresado_kg, 'Despachado kg': c.despachado_kg,
-    'Avance %': c.avance_pct ?? '', 'Stock kg': c.stock_kg, 'Stock 647 kg': c.stock_647_kg, 'Stock 540 kg': c.stock_540_kg, 'Stock ST kg': c.stock_st_kg,
+    'Avance %': c.avance_pct ?? '', 'Stock kg': sk(c), ...(ver1('647') ? { 'Stock 647 kg': c.stock_647_kg } : {}), ...(ver1('540') ? { 'Stock 540 kg': c.stock_540_kg } : {}), ...(ver1('ST') ? { 'Stock ST kg': c.stock_st_kg } : {}),
     'Días en stock': c.dias_stock ?? '', 'Entrega comprometida': c.fecha_entrega ?? '', 'A tiempo %': c.a_tiempo_pct ?? '',
     'Primer ingreso': c.primer_ingreso ?? '', 'Último ingreso': c.ultimo_ingreso ?? '', 'Última salida': c.ultima_salida ?? '',
   })) })
@@ -106,7 +115,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       <KpiCard label="OT con stock en el APT" value={fmtN(conStock.length)} tone="navy" hint={`de ${fmtN(all.length)} OT ${selOt.length || selCli.length ? 'seleccionadas' : 'con movimiento'} · corte ${fmtDate(q.data?.corte)}`} />
       <KpiCard label="Stock comprometido" value={fmtPeso(stockKg)} hint="Saldo de lotes de OT en 647 · 540 · ST" />
-      <KpiCard label="OT con stock > 60 días" value={fmtN(viejas.length)} tone={viejas.length ? 'warn' : 'ok'} hint={fmtPeso(viejas.reduce((t, c) => t + c.stock_kg, 0))} />
+      <KpiCard label="OT con stock > 60 días" value={fmtN(viejas.length)} tone={viejas.length ? 'warn' : 'ok'} hint={fmtPeso(viejas.reduce((t, c) => t + sk(c), 0))} />
       <KpiCard label="Despachos a tiempo" value={conFecha.length ? `${fmtN1(conFecha.reduce((t, c) => t + (c.a_tiempo_pct ?? 0), 0) / conFecha.length)} %` : '—'}
         hint="Promedio por OT · guía con fecha ≤ entrega comprometida" />
     </div>
@@ -132,6 +141,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
             <MultiSelect label="OT" options={opts.ots} value={selOt} onChange={setSelOt} searchable width="w-80"
               render={o => <>{o} <span className="text-slate-400">· {opts.cliente.get(o) ?? '—'}</span></>} />
             <MultiSelect label="Cliente" options={opts.clientes} value={selCli} onChange={setSelCli} searchable width="w-80" />
+            <MultiSelect label="Bodega" options={ALMACENES} value={alms} onChange={setAlms} render={a => ALMACEN_LABEL[a as AptAlmacen]} />
           </div>
         </div>
         <p className="pb-2 text-[11px] text-slate-500">Clic en un encabezado para ordenar.</p>
@@ -139,25 +149,56 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
       {ver === 'producto' && pq.loading && <LoadingBlock label="Cargando el detalle por producto…" />}
       {ver === 'producto' && pq.error && <ErrorBlock message={pq.error} onRetry={pq.reload} />}
       {!(ver === 'producto' && (pq.loading || pq.error)) && <Table empty={!rows.length} head={<tr>{H('ot', 'OT', true)}{H('cliente', 'Cliente', true)}{ver === 'producto' && <>{H('producto', 'Código', true)}{H('glosa', 'Glosa', true)}</>}{H('ingresado_kg', 'Ingresado')}{H('despachado_kg', 'Despachado')}{H('avance_pct', 'Avance', true)}
-        {H('stock_kg', 'Stock')}{H('stock_647_kg', '647')}{H('stock_540_kg', '540')}{H('stock_st_kg', 'ST')}{H('dias_stock', 'Días', true)}
+        {H('stock_kg', 'Stock')}{ver1('647') && H('stock_647_kg', '647')}{ver1('540') && H('stock_540_kg', '540')}{ver1('ST') && H('stock_st_kg', 'ST')}{H('dias_stock', 'Días', true)}
         {H('fecha_entrega', 'Entrega', true)}{H('a_tiempo_pct', 'A tiempo')}{H('ultimo_ingreso', 'Último ingreso', true)}{H('ultima_salida', 'Última salida', true)}</tr>}>
         {rows.map(c => <tr key={esProducto(c) ? `${c.ot}|${c.producto}` : c.ot} className="hover:bg-slate-50">
           <td className={td}><button type="button" onClick={() => onOpen(c.ot)} className="font-bold text-[#002855] underline">{c.ot}</button>
-            <p className="text-[10px] text-slate-500">{esProducto(c) ? '' : `${fmtN(c.productos)} ID · `}{fmtN(c.lotes)} lotes</p></td>
+            <p className="text-[10px] text-slate-500">{esProducto(c) ? '' : `${fmtN(c.productos)} ID · `}<button type="button" onClick={() => setLotesDe({ ot: c.ot, producto: esProducto(c) ? c.producto : undefined })} title="Ver el stock disponible de los lotes" className="font-semibold text-[#002855] underline">{fmtN(c.lotes)} lotes</button></p></td>
           <td className={td}><p className="max-w-56 truncate" title={c.cliente ?? ''}>{c.cliente ?? '—'}</p></td>
           {esProducto(c) && <><td className={`${td} whitespace-nowrap font-semibold`}>{c.producto}</td>
             <td className={td}><p className="max-w-64 truncate" title={c.glosa ?? ''}>{c.glosa ?? '—'}</p></td></>}
           <td className={tdNum}>{fmtPeso(c.ingresado_kg)}</td><td className={tdNum}>{fmtPeso(c.despachado_kg)}</td>
           <td className={`${td} min-w-28`}><div className="flex items-center gap-2"><InlineBar value={c.avance_pct ?? 0} max={100} color={(c.avance_pct ?? 0) >= 100 ? '#0d9488' : '#002855'} /><span className="tabular-nums">{c.avance_pct === null ? '—' : `${fmtN(c.avance_pct)} %`}</span></div></td>
-          <td className={`${tdNum} font-semibold`}>{c.stock_kg > 0 ? fmtPeso(c.stock_kg) : '—'}</td>
-          <td className={tdNum}>{c.stock_647_kg > 0 ? fmtPeso(c.stock_647_kg) : '—'}</td><td className={tdNum}>{c.stock_540_kg > 0 ? fmtPeso(c.stock_540_kg) : '—'}</td><td className={tdNum}>{c.stock_st_kg > 0 ? fmtPeso(c.stock_st_kg) : '—'}</td>
-          <td className={td}>{c.stock_kg > 0 ? <DiasPill dias={c.dias_stock} /> : '—'}</td>
+          <td className={`${tdNum} font-semibold`}>{sk(c) > 0 ? fmtPeso(sk(c)) : '—'}</td>
+          {ALMACENES.filter(ver1).map(a => <td key={a} className={tdNum}>{c[KG[a]] > 0 ? fmtPeso(c[KG[a]]) : '—'}</td>)}
+          <td className={td}>{sk(c) > 0 ? <DiasPill dias={c.dias_stock} /> : '—'}</td>
           <td className={td}>{fmtDate(c.fecha_entrega)}</td><td className={tdNum}>{c.a_tiempo_pct === null ? '—' : `${fmtN(c.a_tiempo_pct)} %`}</td>
           <td className={td}>{fmtDate(c.ultimo_ingreso)}</td><td className={td}>{fmtDate(c.ultima_salida)}</td>
         </tr>)}
       </Table>}
     </ChartCard>
+    {lotesDe && <StockLotes {...lotesDe} alms={alms} onClose={() => setLotesDe(null)} onFicha={() => { setLotesDe(null); onOpen(lotesDe.ot) }} />}
   </>
+}
+
+// Stock disponible de los lotes de una OT (y de un producto en la vista por producto) sin salir de la lista
+function StockLotes({ ot, producto, alms, onClose, onFicha }: { ot: string; producto?: string; alms: string[]; onClose: () => void; onFicha: () => void }) {
+  // Se busca por la OT (va en el lote) con el tope del servidor; el producto y la bodega se filtran aquí
+  const r = useInvQuery(`stock-ot|${ot}`, () => invApi.stock({ q: ot, ambito: 'apt', estado: 'comprometido', orden: 'kg', limit: 2000, offset: 0 }))
+  const truncado = (r.data?.total ?? 0) > (r.data?.filas.length ?? 0)
+  // La búsqueda del servidor es por texto: se dejan solo los lotes de esta OT (y sus subcontratos)
+  const filas = (r.data?.filas ?? []).filter(f => (f.ot === ot || f.ot?.startsWith(`${ot}-`)) && (!producto || f.producto === producto)
+    && (!alms.length || alms.includes(aptAlmacen(f.bodega) ?? '')))
+  const kg = filas.reduce((t, f) => t + (f.kg_conocido ? f.kg : 0), 0)
+  return (
+    <Modal isOpen onClose={onClose} title={`Stock disponible · OT ${ot}`} maxWidth="max-w-5xl"
+      footer={<button type="button" onClick={onFicha} className="min-h-9 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white">Ver ficha de la OT</button>}>
+      <p className="mb-3 text-xs text-slate-500">{producto ? `Producto ${producto} · ` : ''}{alms.length ? `Bodegas ${alms.join(' · ')}` : '647 · 540 · ST'} · {fmtN(filas.length)} producto·lote · {fmtPeso(kg)}{r.data?.corte ? ` · corte ${fmtDate(r.data.corte)}` : ''}</p>
+      {truncado && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">La búsqueda superó {fmtN(r.data?.filas.length ?? 0)} filas: puede faltar stock; vea la ficha de la OT.</p>}
+      {r.loading ? <LoadingBlock label="Calculando el stock…" /> : r.error ? <ErrorBlock message={r.error} onRetry={r.reload} /> :
+        <Table empty={!filas.length} head={<tr><th className={th}>Bodega</th><th className={th}>Producto</th><th className={th}>Lote</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Ingreso</th><th className={th}>En bodega</th></tr>}>
+          {filas.map(f => <tr key={`${f.bodega}|${f.producto}|${f.lote}`} className="hover:bg-slate-50">
+            <td className={td}><p className="font-semibold text-slate-800">{f.bodega}</p><AlmacenTag almacen={aptAlmacen(f.bodega)} /></td>
+            <td className={td}><p className="font-mono text-[11px] text-slate-500">{f.producto}</p><p className="max-w-72 text-slate-800">{f.glosa ?? '—'}</p></td>
+            <td className={td}><p className="font-semibold">{f.lote ?? '—'}</p><p className="text-[10px] text-slate-500">OT {f.ot}</p></td>
+            <td className={tdNum}>{fmtQty(f.qty)} <span className="text-slate-400">{f.unidad ?? ''}</span></td>
+            <td className={tdNum}>{f.kg_conocido ? fmtPeso(f.kg) : <span className="text-slate-400">Sin peso</span>}</td>
+            <td className={td}>{f.fecha_ingreso ? fmtDate(f.fecha_ingreso) : <span className="text-amber-700">Saldo inicial</span>}</td>
+            <td className={td}><DiasPill dias={f.dias_bodega} /></td>
+          </tr>)}
+        </Table>}
+    </Modal>
+  )
 }
 
 function exportFicha(d: InvContrato) {
