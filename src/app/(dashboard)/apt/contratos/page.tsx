@@ -152,7 +152,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
         {H('stock_kg', 'Stock')}{ver1('647') && H('stock_647_kg', '647')}{ver1('540') && H('stock_540_kg', '540')}{ver1('ST') && H('stock_st_kg', 'ST')}{H('dias_stock', 'Días', true)}
         {H('fecha_entrega', 'Entrega', true)}{H('a_tiempo_pct', 'A tiempo')}{H('ultimo_ingreso', 'Último ingreso', true)}{H('ultima_salida', 'Última salida', true)}</tr>}>
         {rows.map(c => <tr key={esProducto(c) ? `${c.ot}|${c.producto}` : c.ot} className="hover:bg-slate-50">
-          <td className={td}><button type="button" onClick={() => onOpen(c.ot)} className="font-bold text-[#002855] underline">{c.ot}</button>
+          <td className={td}><button type="button" onClick={() => setLotesDe({ ot: c.ot, producto: esProducto(c) ? c.producto : undefined })} title="Ver el stock disponible de la OT" className="font-bold text-[#002855] underline">{c.ot}</button>
             <p className="text-[10px] text-slate-500">{esProducto(c) ? '' : `${fmtN(c.productos)} ID · `}<button type="button" onClick={() => setLotesDe({ ot: c.ot, producto: esProducto(c) ? c.producto : undefined })} title="Ver el stock disponible de los lotes" className="font-semibold text-[#002855] underline">{fmtN(c.lotes)} lotes</button></p></td>
           <td className={td}><p className="max-w-56 truncate" title={c.cliente ?? ''}>{c.cliente ?? '—'}</p></td>
           {esProducto(c) && <><td className={`${td} whitespace-nowrap font-semibold`}>{c.producto}</td>
