@@ -6,13 +6,13 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, Download, Search } from 'lucide-react'
 import { ChartCard, EmptyState, ErrorBlock, InlineBar, KpiCard, LoadingBlock } from '@/components/apt/ui'
 import { DiasPill, Table, td, tdNum, th } from '@/components/inventario/parts'
-import { ALMACENES, ALMACEN_LABEL, AlmacenTag, aptAlmacen } from '@/components/inventario/ambito'
-import { Modal } from '@/components/ui/modal'
+import { ALMACENES, ALMACEN_LABEL, AlmacenTag } from '@/components/inventario/ambito'
+import { StockLotesModal } from '@/components/inventario/StockLotesModal'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { Kardex } from '@/components/inventario/Kardex'
 import { AvanceContrato } from '@/components/inventario/AvanceContrato'
 import { invApi } from '@/lib/inventario/api'
-import { fmtN, fmtN1, fmtPeso, fmtQty } from '@/lib/inventario/format'
+import { fmtN, fmtN1, fmtPeso } from '@/lib/inventario/format'
 import type { AptAlmacen, InvContrato, InvContratoFila, InvContratoProductoFila } from '@/lib/inventario/types'
 import { fmtDate } from '@/lib/apt/format'
 import { exportAptXlsx } from '@/lib/apt/export'
@@ -167,40 +167,8 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
         </tr>)}
       </Table>}
     </ChartCard>
-    {lotesDe && <StockLotes {...lotesDe} alms={alms} onClose={() => setLotesDe(null)} onFicha={() => { setLotesDe(null); onOpen(lotesDe.ot) }} />}
+    {lotesDe && <StockLotesModal {...lotesDe} cliente={opts.cliente.get(lotesDe.ot)} alms={alms} onClose={() => setLotesDe(null)} onFicha={() => { setLotesDe(null); onOpen(lotesDe.ot) }} />}
   </>
-}
-
-// Stock disponible de los lotes de una OT (y de un producto en la vista por producto) sin salir de la lista
-function StockLotes({ ot, producto, alms, onClose, onFicha }: { ot: string; producto?: string; alms: string[]; onClose: () => void; onFicha: () => void }) {
-  // Se busca por la OT (va en el lote) con el tope del servidor; el producto y la bodega se filtran aquí
-  // Sin filtro «comprometido»: inv_stock deja sin OT lotes como 16067-S004D que la lista sí cuenta
-  const r = useInvQuery(`stock-ot|${ot}`, () => invApi.stock({ q: ot, ambito: 'apt', orden: 'kg', limit: 2000, offset: 0 }))
-  const truncado = (r.data?.total ?? 0) > (r.data?.filas.length ?? 0)
-  // La búsqueda del servidor es por texto: se dejan solo los lotes de esta OT (y sus subcontratos)
-  const deOt = (s: string | null) => !!s && s.toUpperCase().startsWith(ot) && !/\d/.test(s[ot.length] ?? '')
-  const filas = (r.data?.filas ?? []).filter(f => (deOt(f.ot) || deOt(f.lote)) && (!producto || f.producto === producto)
-    && (!alms.length || alms.includes(aptAlmacen(f.bodega) ?? '')))
-  const kg = filas.reduce((t, f) => t + (f.kg_conocido ? f.kg : 0), 0)
-  return (
-    <Modal isOpen onClose={onClose} title={`Stock disponible · OT ${ot}`} maxWidth="max-w-5xl"
-      footer={<button type="button" onClick={onFicha} className="min-h-9 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white">Ver ficha de la OT</button>}>
-      <p className="mb-3 text-xs text-slate-500">{producto ? `Producto ${producto} · ` : ''}{alms.length ? `Bodegas ${alms.join(' · ')}` : '647 · 540 · ST'} · {fmtN(filas.length)} producto·lote · {fmtPeso(kg)}{r.data?.corte ? ` · corte ${fmtDate(r.data.corte)}` : ''}</p>
-      {truncado && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">La búsqueda superó {fmtN(r.data?.filas.length ?? 0)} filas: puede faltar stock; vea la ficha de la OT.</p>}
-      {r.loading ? <LoadingBlock label="Calculando el stock…" /> : r.error ? <ErrorBlock message={r.error} onRetry={r.reload} /> :
-        <Table empty={!filas.length} head={<tr><th className={th}>Bodega</th><th className={th}>Producto</th><th className={th}>Lote</th><th className={`${th} text-right`}>Cantidad</th><th className={`${th} text-right`}>Peso</th><th className={th}>Ingreso</th><th className={th}>En bodega</th></tr>}>
-          {filas.map(f => <tr key={`${f.bodega}|${f.producto}|${f.lote}`} className="hover:bg-slate-50">
-            <td className={td}><p className="font-semibold text-slate-800">{f.bodega}</p><AlmacenTag almacen={aptAlmacen(f.bodega)} /></td>
-            <td className={td}><p className="font-mono text-[11px] text-slate-500">{f.producto}</p><p className="max-w-72 text-slate-800">{f.glosa ?? '—'}</p></td>
-            <td className={td}><p className="font-semibold">{f.lote ?? '—'}</p><p className="text-[10px] text-slate-500">OT {f.ot ?? ot}</p></td>
-            <td className={tdNum}>{fmtQty(f.qty)} <span className="text-slate-400">{f.unidad ?? ''}</span></td>
-            <td className={tdNum}>{f.kg_conocido ? fmtPeso(f.kg) : <span className="text-slate-400">Sin peso</span>}</td>
-            <td className={td}>{f.fecha_ingreso ? fmtDate(f.fecha_ingreso) : <span className="text-amber-700">Saldo inicial</span>}</td>
-            <td className={td}><DiasPill dias={f.dias_bodega} /></td>
-          </tr>)}
-        </Table>}
-    </Modal>
-  )
 }
 
 function exportFicha(d: InvContrato) {
