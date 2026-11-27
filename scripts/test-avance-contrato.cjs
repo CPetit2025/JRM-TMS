@@ -72,3 +72,12 @@ test('conItems: ítems del lote más específico; sin coincidencia de lote, todo
   assert.equal(b.items, '16188-003, 16188-004'); assert.equal(b.pendiente, 8); assert.equal(b.ultimo_despacho, '2026-09-01')
   assert.equal(sinItem.items, ''); assert.equal(sinItem.pendiente, null)
 })
+
+test('conItems: 16188-S1 = 16188-S001 (como erp_doc_key) y S1 no toma S10', () => {
+  const { conItems } = mod.exports
+  const st = lote => ({ bodega: '647', kind: 'apt', producto: 'A', glosa: null, lote, ot: null, cliente: null, unidad: 'UND', qty: 1, kg: 1, kg_conocido: true,
+    fecha_ingreso: null, fecha_origen: null, dias_bodega: null, dias_origen: null, inferido: 0, foto: 0, capas: 1 })
+  const ls = [linea('16188-001', 'A', 10, 4, { documento: '16188' }), linea('16188-002', 'A', 5, 5, { documento: '16188-S1' })]
+  const [s1, s10] = conItems([st('16188-S001D'), st('16188-S10')], ls)
+  assert.equal(s1.items, '16188-002'); assert.equal(s10.items, '16188-001')
+})

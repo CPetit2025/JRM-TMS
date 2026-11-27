@@ -72,13 +72,15 @@ export function filtrarAvance(rows: AvanceFila[], f: AvanceFiltro): AvanceFila[]
 type Linea = InvContratoLineas['lineas'][number]
 export type StockItemFila = InvStockRow & { items: string; despachado: number | null; pendiente: number | null; ultimo_despacho: string | null }
 
+// Como erp_doc_key: 16188-S001 = 16188-S1 (se conserva la letra final del lote, 16188-S001D)
+const docKey = (s: string | null) => (s ?? '').trim().toUpperCase().replace(/^(\d+)-([A-Z])0*(\d)/, '$1-$2$3')
 /** Ítems del contrato de cada fila de stock: mismo producto y el documento más largo que empieza el lote
  *  (16188-S002 antes que 16188); sin coincidencia de lote, todos los ítems del producto. */
 export function conItems(filas: InvStockRow[], lineas: Linea[]): StockItemFila[] {
   return filas.map(f => {
     const delProd = lineas.filter(l => l.producto === f.producto)
-    const lote = (f.lote ?? '').toUpperCase()
-    const pref = delProd.filter(l => l.documento && lote.startsWith(l.documento.toUpperCase()))
+    const lote = docKey(f.lote)
+    const pref = delProd.filter(l => { const d = docKey(l.documento); return !!d && lote.startsWith(d) && !/\d/.test(lote[d.length] ?? '') })
     const largo = Math.max(0, ...pref.map(l => l.documento.length))
     const ls = pref.length ? pref.filter(l => l.documento.length === largo) : delProd
     return { ...f, items: [...new Set(ls.map(l => l.item))].join(', '),

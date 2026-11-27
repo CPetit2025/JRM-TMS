@@ -83,12 +83,12 @@ export function StockLotesModal({ ot, cliente, producto, alms, onClose, onFicha 
             <td className={td}><DiasPill dias={f.dias_bodega} /></td>
           </tr>)}
         </Table>}
-      {reporte && <ReporteStock filas={filas} meta={{ ot, cliente: cliente ?? null, corte: r.data?.corte ?? null, filtros, generado: new Date() }} onClose={() => setReporte(false)} />}
+      {reporte && <ReporteStock filas={filas} meta={{ ot, cliente: cliente ?? null, corte: r.data?.corte ?? null, corteErp: li.data?.corte ?? null, filtros, generado: new Date() }} onClose={() => setReporte(false)} />}
     </Modal>
   )
 }
 
-type Meta = { ot: string; cliente: string | null; corte: string | null; filtros: string[]; generado: Date }
+type Meta = { ot: string; cliente: string | null; corte: string | null; corteErp: string | null; filtros: string[]; generado: Date }
 const HEAD = ['BODEGA', 'ÍTEM', 'PRODUCTO', 'GLOSA', 'LOTE', 'UNIDAD', 'STOCK', 'PESO (KG)', 'DESPACHADO', 'PENDIENTE', 'ÚLT. DESPACHO', 'INGRESO', 'DÍAS']
 const celdas = (f: StockItemFila) => [f.bodega, f.items, f.producto, f.glosa ?? '', f.lote ?? '', f.unidad ?? '', f.qty, f.kg_conocido ? f.kg : null,
   f.despachado, f.pendiente, f.ultimo_despacho ? fmtDate(f.ultimo_despacho) : '', f.fecha_ingreso ? fmtDate(f.fecha_ingreso) : 'Saldo inicial', f.dias_bodega]
@@ -132,7 +132,7 @@ function ReporteStock({ filas, meta, onClose }: { filas: StockItemFila[]; meta: 
           <img src="/logo-jrm-sia.png" alt="JRM" className="h-14 w-auto object-contain" />
           <div className="flex-1"><p className="text-xl font-bold text-[#002855]">STOCK DISPONIBLE POR LOTE</p><p className="text-sm font-bold text-[#d71920]">OT {meta.ot}{meta.cliente ? ` · ${meta.cliente}` : ''}</p></div>
           <div className="space-y-0.5 text-right text-[10px] text-slate-900">
-            <p><b className="text-slate-500">Corte ERP:</b> {fecha(meta.corte)}</p><p><b className="text-slate-500">Generado:</b> {fecha(meta.generado)}</p>
+            <p><b className="text-slate-500">Corte stock:</b> {fecha(meta.corte)}</p><p><b className="text-slate-500">Corte contrato ERP:</b> {fecha(meta.corteErp)}</p><p><b className="text-slate-500">Generado:</b> {fecha(meta.generado)}</p>
             <p className="max-w-72"><b className="text-slate-500">Filtros:</b> {meta.filtros.join(' · ') || 'Ninguno'}</p></div>
         </div>
         <div className="mt-2 h-1 bg-[#002855]" /><div className="mb-3 h-0.5 bg-[#d71920]" />
@@ -169,7 +169,7 @@ async function descargarExcel(filas: StockItemFila[], meta: Meta, kg: number) {
   ws.mergeCells(1, 3, 2, n - 3); ws.mergeCells(3, 3, 3, n - 3)
   const t = ws.getCell(1, 3); t.value = 'STOCK DISPONIBLE POR LOTE'; t.font = { size: 18, bold: true, color: { argb: 'FF002855' } }; t.alignment = { vertical: 'middle' }
   const s = ws.getCell(3, 3); s.value = `OT ${meta.ot}${meta.cliente ? ` · ${meta.cliente}` : ''}`; s.font = { size: 11, bold: true, color: { argb: 'FFD71920' } }
-  ;[['Corte ERP', fecha(meta.corte)], ['Generado', fecha(meta.generado)], ['Filtros', meta.filtros.join(' · ') || 'Ninguno']].forEach(([k, v], i) => {
+  ;[['Corte stock', fecha(meta.corte)], ['Corte contrato ERP', fecha(meta.corteErp)], ['Generado', `${fecha(meta.generado)} · Filtros: ${meta.filtros.join(' · ') || 'Ninguno'}`]].forEach(([k, v], i) => {
     ws.mergeCells(i + 1, n - 2, i + 1, n)
     const c = ws.getCell(i + 1, n - 2); c.value = `${k}: ${v}`; c.font = { size: 9 }; c.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true }
   })
