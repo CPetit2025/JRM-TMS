@@ -91,4 +91,5 @@ test('motivosSincerar: sin stock no es candidato; señales de despachado, avance
   assert.deepEqual(motivosSincerar({ ...c, despachado_kg: 20, avance_pct: 100 }, 5, corte), ['Despachado > ingresado', 'Avance 100 %'])
   assert.deepEqual(motivosSincerar({ ...c, ultimo_ingreso: '2025-01-10', ultima_salida: '2025-06-01' }, 5, corte), ['Sin movimiento > 1 año'])
   assert.deepEqual(motivosSincerar({ ...c, dias_stock: 400 }, 5, corte), ['Stock > 1 año'])
+  assert.deepEqual(motivosSincerar({ ...c, ultimo_ingreso: null }, 5, corte), ['Sin movimientos registrados'])
 })

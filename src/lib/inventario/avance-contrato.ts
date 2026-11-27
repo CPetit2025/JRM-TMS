@@ -100,7 +100,9 @@ export function motivosSincerar(c: { despachado_kg: number; ingresado_kg: number
   if ((c.avance_pct ?? 0) >= 100) m.push('Avance 100 %')
   const last = [c.ultimo_ingreso, c.ultima_salida].filter((d): d is string => !!d).sort().pop()
   const ref = corte ? Date.parse(corte) : Date.now()
-  if (!last || (ref - Date.parse(last)) / 86400000 > UN_ANIO) m.push('Sin movimiento > 1 año')
+  // Sin fechas: stock sin movimientos en los datos (p. ej. solo saldo inicial); antigüedad desconocida
+  if (!last) m.push('Sin movimientos registrados')
+  else if ((ref - Date.parse(last)) / 86400000 > UN_ANIO) m.push('Sin movimiento > 1 año')
   else if ((c.dias_stock ?? 0) > UN_ANIO) m.push('Stock > 1 año')
   return m
 }
