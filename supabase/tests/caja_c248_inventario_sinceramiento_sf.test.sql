@@ -47,6 +47,8 @@ BEGIN
           'lineas', jsonb_build_array(jsonb_build_object('bodega', 'PRODUCCION C248', 'producto', 'C248.VIGA', 'lote', '99948-S001', 'cantidad', 1))))->>'success')::boolean
      AND NOT (public.inv_sinc_proponer(jsonb_build_object('ot', '99948', 'motivo', 'MERMA_NO_UBICADO', 'observacion', 'Verificado en almacén C248',
           'lineas', jsonb_build_array(jsonb_build_object('bodega', bod, 'producto', 'C248.VIGA', 'lote', '99948-S001', 'cantidad', 11))))->>'success')::boolean
+     AND NOT (public.inv_sinc_proponer(jsonb_build_object('ot', '99948', 'motivo', 'MERMA_NO_UBICADO', 'observacion', 'Verificado en almacén C248',
+          'lineas', jsonb_build_array(jsonb_build_object('bodega', bod, 'producto', 'C248.VIGA', 'lote', '99948-S001', 'cantidad', 0.0000001))))->>'success')::boolean
   THEN pass := pass + 1; ELSE fails := fails || ('T1 permisos / validaciones, saldo ' || COALESCE(stk::text, 'null')); END IF;
 
   -- T2: propone 4 de 10; otra propuesta de 7 ya no entra (quedan 6 sin comprometer)

@@ -177,7 +177,8 @@ BEGIN
   CREATE TEMP TABLE inv_sinc_in ON COMMIT DROP AS
   SELECT btrim(x->>'bodega') AS bodega, btrim(x->>'producto') AS producto, NULLIF(btrim(x->>'glosa'), '') AS glosa,
     upper(btrim(COALESCE(x->>'lote', ''))) AS lote, NULLIF(btrim(x->>'unidad'), '') AS unidad,
-    (x->>'cantidad')::numeric AS cantidad, NULLIF(x->>'peso_unit', '')::numeric AS peso_unit
+    -- a la precisión de inv_movements.cantidad (numeric(20,6)): una cantidad que redondea a 0 haría fallar el recálculo
+    round((x->>'cantidad')::numeric, 6) AS cantidad, NULLIF(x->>'peso_unit', '')::numeric AS peso_unit
   FROM jsonb_array_elements(p->'lineas') x;
 
   SELECT format('%s · %s · %s', bodega, producto, lote) INTO bad FROM inv_sinc_in
@@ -186,6 +187,8 @@ BEGIN
   IF bad IS NOT NULL THEN
     RETURN jsonb_build_object('success', false, 'error', format('Línea no válida (bodega del APT, lote del contrato %s y cantidad > 0): %s', v_ot, bad));
   END IF;
+  -- Reserva serializada: dos propuestas simultáneas no pueden tomar el mismo saldo
+  PERFORM pg_advisory_xact_lock(hashtext('inv_sinc'));
   SELECT format('%s · %s · %s: propone %s y hay %s disponibles', bodega, producto, lote, q, round(d, 3)) INTO bad
   FROM (SELECT bodega, producto, lote, sum(cantidad) q, public.inv_sinc_disponible(bodega, producto, lote, NULL) d
         FROM inv_sinc_in GROUP BY 1, 2, 3) t WHERE q > d + 0.0005 LIMIT 1;
@@ -234,6 +237,7 @@ BEGIN
   IF v_acc = 'autorizar' THEN
     IF s.estado <> 'PROPUESTA' THEN RETURN jsonb_build_object('success', false, 'error', format('%s ya está %s', s.numero, lower(s.estado))); END IF;
     IF s.propuesto_por = auth.uid() THEN RETURN jsonb_build_object('success', false, 'error', 'No puede autorizar un sinceramiento que usted propuso'); END IF;
+    PERFORM pg_advisory_xact_lock(hashtext('inv_sinc'));
     SELECT format('%s · %s · %s: %s propuestos y hay %s', bodega, producto, lote, q, round(d, 3)) INTO bad
     FROM (SELECT bodega, producto, lote, sum(cantidad) q, public.inv_sinc_disponible(bodega, producto, lote, s.id) d
           FROM public.inv_sinc_lineas WHERE sinc_id = s.id GROUP BY 1, 2, 3) t WHERE q > d + 0.0005 LIMIT 1;
