@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { InvParsedPart } from './parse'
-import type { InvAptResumen, InvContrato, InvContratoLineas, InvContratos, InvContratosProducto, InvDwellDim, InvDwellDimResult, InvEstadiaContratos, InvKardex, InvOcultos, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
+import type { InvAptResumen, InvContrato, InvContratoLineas, InvContratos, InvContratosProducto, InvDwellDim, InvDwellDimResult, InvEstadiaContratos, InvKardex, InvOcultos, InvSincList, InvSincPropuesta, InvVerify, InvCatalogs, InvDwell, InvFlow, InvOverview, InvStatus, InvStock, InvStockFilters, InvTrace } from './types'
 
 // Acceso a las funciones public.inv_* (inventario multi-almacén). Todas devuelven { success, error?, ... }.
 const supabase = createClient()
@@ -35,6 +35,10 @@ export const invApi = {
   estadiaContratos: () => call<InvEstadiaContratos>('inv_estadia_contratos'),
   ocultos: () => call<InvOcultos>('inv_ocultos_list'),
   saveOculto: (p: { codigo: string; motivo?: string; ocultar: boolean }) => call<{ success: true; codigo: string }>('inv_ocultos_save', { p }),
+  sinc: () => call<InvSincList>('inv_sinc_list'),
+  sincProponer: (p: InvSincPropuesta) => call<{ success: true; id: number; numero: string }>('inv_sinc_proponer', { p }),
+  sincDecidir: (p: { id: number; accion: 'autorizar' | 'rechazar' | 'anular' | 'revertir'; motivo?: string }) =>
+    call<{ success: true; numero: string; estado: string }>('inv_sinc_decidir', { p }),
   kardex: (q: string, producto?: string) => call<InvKardex>('inv_contrato_kardex', { p_q: q, p_producto: producto || null }),
   catalogs: () => call<InvCatalogs>('inv_catalogs'),
   verify: () => call<InvVerify>('inv_verify'),

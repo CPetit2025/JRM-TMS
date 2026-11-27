@@ -56,6 +56,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   { title: 'Almacén APT', modules: [
     { id: 'apt', label: 'Estadía de inventario y trazabilidad' },
     { id: 'apt-carga', label: 'Carga diaria ENTRADA/SALIDA y parámetros', mode: 'toggle' },
+    { id: 'apt-sincerar', label: 'APT: proponer sinceramiento de stock (almacén virtual SF)', mode: 'toggle' },
+    { id: 'apt-sincerar-autorizar', label: 'APT: autorizar o revertir sinceramientos (Jefatura de Distribución)', mode: 'toggle' },
     { id: 'apt-admin', label: 'Administrar la analítica APT (áreas, clases, unidades y metodología)', mode: 'toggle' },
   ] },
   { title: 'Eficiencia de Flota', modules: [
