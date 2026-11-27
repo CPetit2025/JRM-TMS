@@ -5,7 +5,7 @@ import { Download, Loader2, Printer, Search } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { ErrorBlock, LoadingBlock } from '@/components/apt/ui'
 import { SortTh } from '@/components/apt/PphShared'
-import { DiasPill, Table, td, tdNum } from '@/components/inventario/parts'
+import { DiasPill, Table, td, tdNum, th } from '@/components/inventario/parts'
 import { AlmacenTag, aptAlmacen } from '@/components/inventario/ambito'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { invApi } from '@/lib/inventario/api'
@@ -13,6 +13,8 @@ import { fmtN, fmtPeso, fmtQty } from '@/lib/inventario/format'
 import { fmtDate } from '@/lib/apt/format'
 import { fecha } from '@/lib/inventario/avance-contrato-excel'
 import { conItems, type StockItemFila } from '@/lib/inventario/avance-contrato'
+import { imprimirHoja } from './imprimir'
+import { SincProponer } from './SincProponer'
 
 const COLS: Array<{ k: keyof StockItemFila; l: string; left?: boolean }> = [
   { k: 'bodega', l: 'Bodega', left: true }, { k: 'items', l: 'Ítem', left: true }, { k: 'producto', l: 'Producto', left: true }, { k: 'lote', l: 'Lote', left: true },
@@ -31,6 +33,12 @@ export function StockLotesModal({ ot, cliente, producto, alms, onClose, onFicha 
   const [q, setQ] = useState('')
   const [sort, setSort] = useState({ k: 'kg', desc: true })
   const [reporte, setReporte] = useState(false)
+  // Sinceramiento: quien puede proponer marca los lotes que físicamente no existen
+  const sinc = useInvQuery('sinc', () => invApi.sinc())
+  const puede = !!sinc.data?.puede_proponer
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [proponer, setProponer] = useState(false)
+  const kf = (f: { bodega: string; producto: string; lote: string | null }) => `${f.bodega}|${f.producto}|${f.lote}`
   const truncado = (r.data?.total ?? 0) > (r.data?.filas.length ?? 0)
   const filas = useMemo(() => {
     const deOt = (s: string | null) => !!s && s.toUpperCase().startsWith(ot) && !/\d/.test(s[ot.length] ?? '')
@@ -53,10 +61,13 @@ export function StockLotesModal({ ot, cliente, producto, alms, onClose, onFicha 
   const onSort = (k: string) => setSort(s => ({ k, desc: s.k === k ? !s.desc : !TEXTO.includes(k) }))
   const filtros = [producto && `Producto ${producto}`, alms.length ? `Bodegas ${alms.join(' · ')}` : '647 · 540 · ST', q.trim() && `Búsqueda «${q.trim()}»`].filter(Boolean) as string[]
   const loading = r.loading || li.loading
+  const elegidas = filas.filter(f => sel.has(kf(f)) && f.lote)
+  const toggle = (k: string) => setSel(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n })
   return (
     <Modal isOpen onClose={onClose} title={`Stock disponible · OT ${ot}`} maxWidth="max-w-[min(96vw,1400px)]"
       footer={<div className="flex flex-wrap justify-between gap-2">
-        <button type="button" onClick={onFicha} className="min-h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]">Ver ficha de la OT</button>
+        <div className="flex flex-wrap gap-2"><button type="button" onClick={onFicha} className="min-h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]">Ver ficha de la OT</button>
+          {puede && <button type="button" onClick={() => setProponer(true)} disabled={!elegidas.length} title="Marque los lotes que físicamente no existen" className="min-h-9 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-[#cf152d] disabled:opacity-50">Proponer sinceramiento{elegidas.length ? ` (${elegidas.length})` : ''}</button>}</div>
         <button type="button" onClick={() => setReporte(true)} disabled={!filas.length} className="flex min-h-9 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50"><Printer className="h-4 w-4" aria-hidden /> Reporte (vista previa)</button>
       </div>}>
       <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -68,8 +79,9 @@ export function StockLotesModal({ ot, cliente, producto, alms, onClose, onFicha 
       {truncado && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">La búsqueda superó {fmtN(r.data?.filas.length ?? 0)} filas: puede faltar stock; vea la ficha de la OT.</p>}
       {li.error && <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">No se pudieron leer los ítems del contrato: {li.error}</p>}
       {loading ? <LoadingBlock label="Calculando el stock…" /> : r.error ? <ErrorBlock message={r.error} onRetry={r.reload} /> :
-        <Table empty={!filas.length} head={<tr>{COLS.map(c => <SortTh key={c.k} label={c.l} k={c.k} sort={sort.k} desc={sort.desc} onSort={onSort} align={c.left ? 'left' : 'right'} />)}</tr>}>
-          {filas.map(f => <tr key={`${f.bodega}|${f.producto}|${f.lote}`} className="hover:bg-slate-50">
+        <Table empty={!filas.length} head={<tr>{puede && <th className={th}><span className="sr-only">Elegir para sincerar</span></th>}{COLS.map(c => <SortTh key={c.k} label={c.l} k={c.k} sort={sort.k} desc={sort.desc} onSort={onSort} align={c.left ? 'left' : 'right'} />)}</tr>}>
+          {filas.map(f => <tr key={kf(f)} className={sel.has(kf(f)) ? 'bg-red-50' : 'hover:bg-slate-50'}>
+            {puede && <td className={td}><input type="checkbox" checked={sel.has(kf(f))} disabled={!f.lote} onChange={() => toggle(kf(f))} aria-label={`Sincerar el lote ${f.lote ?? ''} de ${f.bodega}`} className="h-4 w-4" /></td>}
             <td className={td}><p className="font-semibold text-slate-800">{f.bodega}</p><AlmacenTag almacen={aptAlmacen(f.bodega)} /></td>
             <td className={`${td} font-semibold text-[#002855]`}>{f.items || <span className="font-normal text-slate-400">Sin ítem</span>}</td>
             <td className={td}><p className="font-mono text-[11px] text-slate-500">{f.producto}</p><p className="max-w-72 text-slate-800">{f.glosa ?? '—'}</p></td>
@@ -83,6 +95,7 @@ export function StockLotesModal({ ot, cliente, producto, alms, onClose, onFicha 
             <td className={td}><DiasPill dias={f.dias_bodega} /></td>
           </tr>)}
         </Table>}
+      {proponer && <SincProponer ot={ot} cliente={cliente} filas={elegidas} onClose={() => setProponer(false)} onDone={() => { setSel(new Set()); sinc.reload() }} />}
       {reporte && <ReporteStock filas={filas} meta={{ ot, cliente: cliente ?? null, corte: r.data?.corte ?? null, corteErp: li.data?.corte ?? null, filtros, generado: new Date() }} onClose={() => setReporte(false)} />}
     </Modal>
   )
@@ -99,19 +112,7 @@ function ReporteStock({ filas, meta, onClose }: { filas: StockItemFila[]; meta: 
   const hoja = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const kg = filas.reduce((t, f) => t + (f.kg_conocido ? f.kg : 0), 0)
-  // Se imprime en un iframe con los estilos de la página: solo sale la hoja, en horizontal
-  const imprimir = () => {
-    const f = document.createElement('iframe')
-    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
-    document.body.appendChild(f)
-    const d = f.contentDocument!
-    const css = [...document.querySelectorAll('link[rel="stylesheet"],style')].map(n => n.outerHTML).join('')
-    d.open(); d.write(`<!doctype html><html><head><meta charset="utf-8"><title>Stock disponible OT ${meta.ot}</title>${css}<style>@page{size:A4 landscape;margin:10mm}body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}thead{display:table-header-group}tr{break-inside:avoid}</style></head><body>${hoja.current?.outerHTML ?? ''}</body></html>`); d.close()
-    const go = () => { f.contentWindow?.focus(); f.contentWindow?.print(); setTimeout(() => f.remove(), 1000) }
-    // Espera al logo antes de imprimir
-    const img = d.querySelector('img')
-    if (img && !img.complete) { img.onload = go; img.onerror = go } else setTimeout(go, 300)
-  }
+  const imprimir = () => imprimirHoja(hoja.current, `Stock disponible OT ${meta.ot}`, 'landscape')
   const descargar = async () => {
     setBusy(true); setError('')
     try { await descargarExcel(filas, meta, kg) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo generar el Excel') } finally { setBusy(false) }

@@ -198,3 +198,17 @@ export interface InvKardex {
   serie: Array<{ fecha: string; ingreso_kg: number; salida_kg: number; saldo_kg: number }>
   movimientos: InvKardexMov[]
 }
+
+// Sinceramiento APT: stock que físicamente no existe, transferido al almacén virtual SF (inv_sinc)
+export type SincMotivo = 'DESPACHADO_SIN_GUIA' | 'SALDO_INICIAL_INFERIDO' | 'ERROR_DIGITACION' | 'MERMA_NO_UBICADO'
+export type SincEstado = 'PROPUESTA' | 'AUTORIZADA' | 'RECHAZADA' | 'ANULADA' | 'REVERTIDA' | 'REGULARIZADA'
+export interface InvSincLinea { bodega: string; producto: string; glosa: string | null; lote: string; unidad: string | null; cantidad: number; peso_unit: number | null; kg: number }
+export interface InvSinc {
+  id: number; numero: string; ot: string; cliente: string | null; motivo: SincMotivo; observacion: string; estado: SincEstado
+  propuesto_por: string; propuesto_at: string; proponente: string | null; decidido_at: string | null; decisor: string | null; decision_motivo: string | null
+  autorizado_at: string | null; autorizador: string | null; revertido_at: string | null; revertidor: string | null; revertido_motivo: string | null
+  regularizado_at: string | null; lineas: InvSincLinea[]
+}
+export interface InvSincList { uid: string | null; puede_proponer: boolean; puede_autorizar: boolean; rebuilt_at: string | null; filas: InvSinc[] }
+export type InvSincPropuesta = { ot: string; cliente?: string | null; motivo: SincMotivo; observacion: string
+  lineas: Array<{ bodega: string; producto: string; glosa: string | null; lote: string; unidad: string | null; cantidad: number; peso_unit: number | null }> }
