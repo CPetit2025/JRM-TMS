@@ -5,10 +5,12 @@
 --    sola) y las actas del bloque comparten «bloque» (BQ-…) para el acta consolidada.
 -- 2. Directo: la Jefatura de Distribución (quien puede autorizar) propone y autoriza en un paso; queda marcado en el acta.
 --    El Analista sigue con proponer → autorizar (nadie autoriza lo propio, salvo la transferencia directa).
--- 3. Regularización: al autorizar se guarda el saldo de la clave en el modelo (saldo_previo). En cada recálculo, si los
---    movimientos del ERP posteriores dejan la clave por debajo de lo que realmente había (saldo_previo − cantidad), esa
---    diferencia ya la quitó el ERP: deja de restarse en SF. Todo regularizado → estado REGULARIZADA.
---    Así un despacho real de la parte que sí existía no «devuelve» el stock fantasma al APT.
+-- 3. Regularización: al autorizar se guarda el saldo de la clave en el modelo (saldo_previo) y el neto de sus movimientos
+--    del ERP (erp_base). En cada recálculo, el cambio del neto del ERP desde entonces (cualquier fecha, también el mismo día)
+--    dice cuánto bajó la clave: si queda por debajo de lo que realmente había (saldo_previo − cantidad), esa diferencia ya
+--    la quitó el ERP y deja de restarse en SF. Todo regularizado → REGULARIZADA; si una carga posterior del ERP reemplaza
+--    o quita el ajuste, el acta vuelve a AUTORIZADA y el traspaso se restituye. Un despacho de la parte que sí existía no
+--    «devuelve» el stock fantasma al APT.
 BEGIN;
 SET LOCAL lock_timeout = '3min';
 SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
@@ -16,6 +18,7 @@ SELECT pg_advisory_xact_lock(hashtext('inv_rebuild'));
 ALTER TABLE public.inv_sinc ADD COLUMN IF NOT EXISTS bloque text;
 ALTER TABLE public.inv_sinc ADD COLUMN IF NOT EXISTS directo boolean NOT NULL DEFAULT false;
 ALTER TABLE public.inv_sinc_lineas ADD COLUMN IF NOT EXISTS saldo_previo numeric;
+ALTER TABLE public.inv_sinc_lineas ADD COLUMN IF NOT EXISTS erp_base numeric;
 CREATE INDEX IF NOT EXISTS inv_sinc_bloque_idx ON public.inv_sinc (bloque) WHERE bloque IS NOT NULL;
 
 -- «Nadie autoriza lo propio», salvo la transferencia directa de la Jefatura
@@ -48,7 +51,11 @@ BEGIN
                 WHERE y.bodega = l.bodega AND y.producto = l.producto AND y.lk = l.lote), 0)
     - COALESCE((SELECT sum(x.cantidad) FROM public.inv_sinc_lineas x JOIN public.inv_sinc s ON s.id = x.sinc_id
                 WHERE x.bodega = l.bodega AND x.producto = l.producto AND x.lote = l.lote AND s.id <> p_id
-                  AND s.estado = 'AUTORIZADA' AND s.autorizado_at > v_rebuilt), 0)
+                  AND s.estado = 'AUTORIZADA' AND s.autorizado_at > v_rebuilt), 0),
+    -- neto de los movimientos del ERP de la clave a esta hora (sin los traspasos a SF)
+    erp_base = COALESCE((SELECT sum(m.cantidad) FROM public.inv_movements m
+                         WHERE m.active AND m.bodega = l.bodega AND m.producto = l.producto AND m.lote = l.lote
+                           AND m.upload_id IS DISTINCT FROM '5f000000-0000-4000-8000-00000000005f'::uuid), 0)
   WHERE l.sinc_id = p_id;
   UPDATE public.inv_sinc SET estado = 'AUTORIZADA', decidido_por = auth.uid(), decidido_at = now(), decision_motivo = p_motivo,
     autorizado_por = auth.uid(), autorizado_at = now(), directo = p_directo WHERE id = p_id;
@@ -179,21 +186,22 @@ BEGIN
   DELETE FROM public.inv_movements WHERE upload_id = v_up;
 
   DROP TABLE IF EXISTS pg_temp.inv_sinc_vigente;
-  -- reg: lo que el ERP ya quitó. Saldo de la clave sin sinceramiento = saldo_previo + neto de movimientos del ERP posteriores
-  -- a la autorización; si queda por debajo de saldo_previo − cantidad, la diferencia la regularizó el ERP.
-  -- shortcut: cuenta los movimientos con fecha posterior al día de la autorización; un ajuste del ERP fechado el mismo día
-  -- no se ve (los del ERP suelen registrarse después). Índice inv_movements_key_idx: solo lee las claves sinceradas.
+  -- reg: lo que el ERP ya quitó. Saldo de la clave sin sinceramiento = saldo_previo + (neto del ERP hoy − erp_base); si
+  -- queda por debajo de saldo_previo − cantidad, la diferencia la regularizó el ERP. Se reevalúan también las REGULARIZADA
+  -- (una carga de reemplazo puede quitar el ajuste). Índice inv_movements_key_idx: solo lee las claves sinceradas.
   CREATE TEMP TABLE inv_sinc_vigente ON COMMIT DROP AS
-  SELECT s.id AS sinc_id, s.numero, s.ot, s.autorizado_at, l.id, l.bodega, l.producto, l.glosa, l.lote, l.unidad, l.peso_unit, l.cantidad,
-    CASE WHEN l.saldo_previo IS NULL THEN 0 ELSE least(l.cantidad, greatest(0, l.cantidad - l.saldo_previo - COALESCE((
+  SELECT s.id AS sinc_id, s.estado, s.numero, s.ot, s.autorizado_at, l.id, l.bodega, l.producto, l.glosa, l.lote, l.unidad, l.peso_unit, l.cantidad,
+    CASE WHEN l.saldo_previo IS NULL OR l.erp_base IS NULL THEN 0 ELSE least(l.cantidad, greatest(0, l.cantidad - l.saldo_previo - (COALESCE((
       SELECT sum(m.cantidad) FROM public.inv_movements m
-      WHERE m.active AND m.bodega = l.bodega AND m.producto = l.producto AND m.lote = l.lote
-        AND m.fecha > (s.autorizado_at AT TIME ZONE 'America/Lima')::date), 0))) END AS reg
+      WHERE m.active AND m.bodega = l.bodega AND m.producto = l.producto AND m.lote = l.lote), 0) - l.erp_base))) END AS reg
   FROM public.inv_sinc s JOIN public.inv_sinc_lineas l ON l.sinc_id = s.id
-  WHERE s.estado = 'AUTORIZADA';
+  WHERE s.estado IN ('AUTORIZADA', 'REGULARIZADA');
 
   UPDATE public.inv_sinc s SET estado = 'REGULARIZADA', regularizado_at = now()
   WHERE s.estado = 'AUTORIZADA' AND NOT EXISTS (SELECT 1 FROM inv_sinc_vigente v WHERE v.sinc_id = s.id AND v.cantidad - v.reg > 0.0000005);
+  -- el ERP ya no respalda la regularización (se reemplazó o quitó el ajuste): vuelve a restar en SF
+  UPDATE public.inv_sinc s SET estado = 'AUTORIZADA', regularizado_at = NULL
+  WHERE s.estado = 'REGULARIZADA' AND EXISTS (SELECT 1 FROM inv_sinc_vigente v WHERE v.sinc_id = s.id AND v.cantidad - v.reg > 0.0000005);
 
   INSERT INTO public.inv_movements (upload_id, side, active, linea, tipodocto, clase, bodega, numero, fecha, producto, glosa,
     cantidad, unidad, lote_raw, lote, ot, comentario, peso_unit, peso_kg)

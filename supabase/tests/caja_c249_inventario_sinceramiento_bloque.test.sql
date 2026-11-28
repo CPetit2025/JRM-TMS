@@ -1,7 +1,7 @@
 -- CAJA C249 — Sinceramiento APT en bloque: varias OT con todo su stock (un acta por OT con su bloque BQ-), la Jefatura
 -- transfiere directo (propone y autoriza), el Analista no; regularización con el ERP: una salida del ERP posterior que deja
 -- la clave por debajo de lo real deja de restarse en SF (REGULARIZADA), y un despacho de la parte real no devuelve el
--- stock fantasma al APT. (SF se mide en los movimientos del traspaso: inv.scope deja fuera la bodega virtual.) Se revierte.
+-- stock fantasma al APT; si el ERP reemplaza el ajuste, vuelve a SF. (SF se mide en los movimientos del traspaso: inv.scope deja fuera la bodega virtual.) Se revierte.
 BEGIN;
 SET LOCAL statement_timeout = '100s';
 SET LOCAL lock_timeout = '60s';
@@ -124,7 +124,14 @@ BEGIN
      AND (SELECT COALESCE(sum(qty - consumed), 0) FROM public.inv_layers WHERE bodega IN (b647, b540) AND producto LIKE 'C249.%') = 0
   THEN pass := pass + 1; ELSE fails := fails || ('T6 regularizada: SF ' || sf); END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C249 FAIL (%/6): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C249 PASS (6/6) sinceramiento en bloque: un acta por OT, directo de la Jefatura y regularización con el ERP sin devolver el fantasma%', CASE WHEN sin_ana THEN ' (T2 omitida: sin Analista no autorizador)' ELSE '' END;
+  -- T7: una carga de reemplazo del ERP quita esos ajustes → las actas vuelven a AUTORIZADA y el stock a SF (B 5 + C 1)
+  UPDATE public.inv_movements SET active = false WHERE upload_id = us;
+  PERFORM public.inv_rebuild();
+  sf := (SELECT COALESCE(sum(cantidad), 0) FROM public.inv_movements WHERE active AND bodega = 'SF-SINCERAMIENTO' AND producto LIKE 'C249.%');
+  IF sf = 6 AND (SELECT bool_and(estado = 'AUTORIZADA' AND regularizado_at IS NULL) FROM public.inv_sinc WHERE id IN (ida, idb))
+  THEN pass := pass + 1; ELSE fails := fails || ('T7 reevaluar regularizadas: SF ' || sf); END IF;
+
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C249 FAIL (%/7): %', pass, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C249 PASS (7/7) sinceramiento en bloque: un acta por OT, directo de la Jefatura y regularización con el ERP (reevaluada) sin devolver el fantasma%', CASE WHEN sin_ana THEN ' (T2 omitida: sin Analista no autorizador)' ELSE '' END;
 END $test$;
 ROLLBACK;
