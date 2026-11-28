@@ -10,7 +10,8 @@ import { fmtN, fmtPeso, fmtQty } from '@/lib/inventario/format'
 import { SINC_MOTIVO } from '@/lib/inventario/sinceramiento'
 import type { InvSincTransferencia, InvStockRow, SincMotivo } from '@/lib/inventario/types'
 
-export type SincOt = { ot: string; cliente?: string | null; kg: number }
+// productos: solo esos códigos de la OT (vista por producto); sin ellos, todo el stock de la OT
+export type SincOt = { ot: string; cliente?: string | null; kg: number; productos?: string[] }
 
 /** Sinceramiento al almacén virtual SF: los lotes elegidos de una OT (filas) o un bloque de OT con todo su stock del APT (ots).
  *  El Analista propone y la Jefatura autoriza; la Jefatura puede transferir directo (propone y autoriza en un paso).
@@ -34,7 +35,7 @@ export function SincProponer({ ot, cliente, filas, ots, puedeAutorizar, onClose,
     try {
       const base = { motivo: motivo as SincMotivo, observacion: obs.trim(), directo }
       setHecho(await invApi.sincTransferir(ots
-        ? { ...base, ots: ots.map(o => ({ ot: o.ot, cliente: o.cliente })) }
+        ? { ...base, ots: ots.map(o => ({ ot: o.ot, cliente: o.cliente, productos: o.productos })) }
         : { ...base, ot: ot ?? '', cliente, lineas: lotes.map(f => ({ bodega: f.bodega, producto: f.producto, glosa: f.glosa, lote: f.lote ?? '', unidad: f.unidad, cantidad: num(f), peso_unit: pu(f) })) }))
       onDone()
     } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo registrar') } finally { setBusy(false) }
@@ -51,7 +52,7 @@ export function SincProponer({ ot, cliente, filas, ots, puedeAutorizar, onClose,
   const titulo = ots ? `Sincerar ${fmtN(ots.length)} contrato(s)` : `Proponer sinceramiento · OT ${ot}`
   return <Modal isOpen onClose={onClose} title={titulo} maxWidth="max-w-4xl"
     footer={<div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="text-xs text-slate-500">{ots ? `${fmtN(ots.length)} OT · todo su stock del APT` : `${lotes.length} lote(s)`} · {fmtPeso(kg)} al almacén virtual SF</p>
+      <p className="text-xs text-slate-500">{ots ? `${fmtN(ots.length)} OT · ${ots.some(o => o.productos) ? 'productos elegidos' : 'todo su stock del APT'}` : `${lotes.length} lote(s)`} · {fmtPeso(kg)} al almacén virtual SF</p>
       <div className="flex gap-2"><button type="button" onClick={onClose} className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold">Cancelar</button>
         <button type="button" disabled={busy || !motivo || obs.trim().length < 10 || !!invalida} onClick={() => void enviar()}
           className="flex min-h-10 items-center gap-2 rounded-lg bg-[#cf152d] px-4 text-sm font-bold text-white disabled:opacity-50">
@@ -60,8 +61,8 @@ export function SincProponer({ ot, cliente, filas, ots, puedeAutorizar, onClose,
     <p className="mb-3 text-xs text-slate-600">Use esto solo para stock que <b>físicamente no existe</b>. No se borra nada del ERP: autorizado, el stock sale del APT hacia el almacén virtual SF y queda pendiente de regularizar en el ERP. Se puede revertir.
       {ots && ' Cada OT queda con su propia acta y todas comparten el número de bloque (acta consolidada).'}</p>
     {ots
-      ? <Table paginate={false} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th><th className={`${th} text-right`}>Stock en el APT</th></tr>}>
-          {ots.map(o => <tr key={o.ot}><td className={`${td} font-semibold`}>{o.ot}</td><td className={td}>{o.cliente ?? '—'}</td><td className={tdNum}>{fmtPeso(o.kg)}</td></tr>)}
+      ? <Table paginate={false} head={<tr><th className={th}>OT</th><th className={th}>Cliente</th><th className={th}>Productos</th><th className={`${th} text-right`}>Stock en el APT</th></tr>}>
+          {ots.map(o => <tr key={o.ot}><td className={`${td} font-semibold`}>{o.ot}</td><td className={td}>{o.cliente ?? '—'}</td><td className={td}><p className="max-w-64 truncate font-mono text-[11px]" title={o.productos?.join(', ')}>{o.productos ? o.productos.join(', ') : 'Todos'}</p></td><td className={tdNum}>{fmtPeso(o.kg)}</td></tr>)}
         </Table>
       : <Table paginate={false} head={<tr><th className={th}>Bodega</th><th className={th}>Producto · lote</th><th className={`${th} text-right`}>Stock sistema</th><th className={`${th} text-right`}>A sincerar</th></tr>}>
           {lotes.map(f => <tr key={key(f)}>
