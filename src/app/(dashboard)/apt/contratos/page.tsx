@@ -8,6 +8,7 @@ import { ChartCard, EmptyState, ErrorBlock, InlineBar, KpiCard, LoadingBlock } f
 import { DiasPill, Table, td, tdNum, th } from '@/components/inventario/parts'
 import { ALMACENES, ALMACEN_LABEL, AlmacenTag } from '@/components/inventario/ambito'
 import { StockLotesModal } from '@/components/inventario/StockLotesModal'
+import { SincProponer } from '@/components/inventario/SincProponer'
 import { useInvQuery } from '@/components/inventario/useInvQuery'
 import { Kardex } from '@/components/inventario/Kardex'
 import { AvanceContrato } from '@/components/inventario/AvanceContrato'
@@ -62,6 +63,12 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   // Bodegas elegidas: el stock, el estado, el orden, los KPIs y el Excel cuentan solo esas
   const [alms, setAlms] = useState<string[]>([])
   const [lotesDe, setLotesDe] = useState<{ ot: string; producto?: string } | null>(null)
+  // Sinceramiento en bloque (vista Por OT): OT elegidas con todo su stock del APT
+  const sinc = useInvQuery('sinc', () => invApi.sinc())
+  const [selSinc, setSelSinc] = useState<Set<string>>(new Set())
+  const [bloque, setBloque] = useState(false)
+  const autoriza = !!sinc.data?.puede_autorizar
+  const elegir = (ot: string) => setSelSinc(s => { const n = new Set(s); if (n.has(ot)) n.delete(ot); else n.add(ot); return n })
   const sk = useMemo(() => (c: Fila) => alms.length ? alms.reduce((t, a) => t + c[KG[a as AptAlmacen]], 0) : c.stock_kg, [alms])
   const ver1 = (a: AptAlmacen) => !alms.length || alms.includes(a)
   // Columna nueva: texto de A a Z, números de mayor a menor; misma columna: invierte
@@ -75,6 +82,7 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     return (c: Fila) => (!ots.size || ots.has(c.ot)) && (!clis.size || clis.has(c.cliente ?? ''))
   }, [selOt, selCli])
   const [ver, setVer] = useState<'ot' | 'producto'>('ot')
+  const puedeSinc = ver === 'ot' && !!sinc.data?.puede_proponer
   // Con bodegas elegidas el estado depende de esas bodegas: se trae todo y se filtra aquí
   const estServ = alms.length || estado === 'sincerar' ? '' : estado
   const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estServ}` : 'contratos_producto|off',
@@ -122,7 +130,10 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
     </div>
     <ChartCard title={ver === 'producto' ? 'Contratos / OT por producto' : 'Contratos / OT'} subtitle={ver === 'producto' ? `${fmtN(rows.length)} filas OT · producto` : `${fmtN(rows.length)} OT`}
       info="Avance = kg despachados / kg ingresados al APT (sin contar dos veces el traspaso 647 → ST de la misma OT). Días en stock: desde el ingreso más antiguo que aún tiene saldo."
-      actions={<button type="button" onClick={exportar} disabled={!rows.length} className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] disabled:opacity-50"><Download className="h-4 w-4" /> Excel</button>}>
+      actions={<div className="flex flex-wrap gap-2">
+        {puedeSinc && <button type="button" onClick={() => setBloque(true)} disabled={!selSinc.size} title="Marque las OT que físicamente ya no tienen stock"
+          className="flex min-h-9 items-center rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-[#cf152d] disabled:opacity-50">{autoriza ? 'Sincerar a SF' : 'Proponer sinceramiento'}{selSinc.size ? ` (${fmtN(selSinc.size)} OT)` : ''}</button>}
+        <button type="button" onClick={exportar} disabled={!rows.length} className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-[#002855] disabled:opacity-50"><Download className="h-4 w-4" /> Excel</button></div>}>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <label className="text-xs font-semibold text-slate-600">Ver
           <select value={ver} onChange={e => setVer(e.target.value as 'ot' | 'producto')} className="mt-1 block min-h-10 rounded-lg border border-slate-300 px-2 text-sm">
@@ -149,10 +160,12 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
       </div>
       {ver === 'producto' && pq.loading && <LoadingBlock label="Cargando el detalle por producto…" />}
       {ver === 'producto' && pq.error && <ErrorBlock message={pq.error} onRetry={pq.reload} />}
-      {!(ver === 'producto' && (pq.loading || pq.error)) && <Table empty={!rows.length} head={<tr>{H('ot', 'OT', true)}{H('cliente', 'Cliente', true)}{ver === 'producto' && <>{H('producto', 'Código', true)}{H('glosa', 'Glosa', true)}</>}{H('ingresado_kg', 'Ingresado')}{H('despachado_kg', 'Despachado')}{H('avance_pct', 'Avance', true)}
+      {!(ver === 'producto' && (pq.loading || pq.error)) && <Table empty={!rows.length} head={<tr>{puedeSinc && <th className={th}><input type="checkbox" aria-label="Elegir todas las OT visibles para sincerar" className="h-4 w-4"
+          checked={rows.length > 0 && rows.every(c => selSinc.has(c.ot))} onChange={e => setSelSinc(e.target.checked ? new Set(rows.map(c => c.ot)) : new Set())} /></th>}{H('ot', 'OT', true)}{H('cliente', 'Cliente', true)}{ver === 'producto' && <>{H('producto', 'Código', true)}{H('glosa', 'Glosa', true)}</>}{H('ingresado_kg', 'Ingresado')}{H('despachado_kg', 'Despachado')}{H('avance_pct', 'Avance', true)}
         {H('stock_kg', 'Stock')}{ver1('647') && H('stock_647_kg', '647')}{ver1('540') && H('stock_540_kg', '540')}{ver1('ST') && H('stock_st_kg', 'ST')}{H('dias_stock', 'Días', true)}
         {H('fecha_entrega', 'Entrega', true)}{H('a_tiempo_pct', 'A tiempo')}{H('ultimo_ingreso', 'Último ingreso', true)}{H('ultima_salida', 'Última salida', true)}{estado === 'sincerar' && <th className={th}>Por qué</th>}</tr>}>
         {rows.map(c => <tr key={esProducto(c) ? `${c.ot}|${c.producto}` : c.ot} className="hover:bg-slate-50">
+          {puedeSinc && <td className={td}><input type="checkbox" aria-label={`Elegir la OT ${c.ot} para sincerar`} className="h-4 w-4" checked={selSinc.has(c.ot)} onChange={() => elegir(c.ot)} /></td>}
           <td className={td}><button type="button" onClick={() => setLotesDe({ ot: c.ot, producto: esProducto(c) ? c.producto : undefined })} title="Ver el stock disponible de la OT" className="font-bold text-[#002855] underline">{c.ot}</button>
             <p className="text-[10px] text-slate-500">{esProducto(c) ? '' : `${fmtN(c.productos)} ID · `}<button type="button" onClick={() => setLotesDe({ ot: c.ot, producto: esProducto(c) ? c.producto : undefined })} title="Ver el stock disponible de los lotes" className="font-semibold text-[#002855] underline">{fmtN(c.lotes)} lotes</button></p></td>
           <td className={td}><p className="max-w-56 truncate" title={c.cliente ?? ''}>{c.cliente ?? '—'}</p></td>
@@ -169,6 +182,8 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
         </tr>)}
       </Table>}
     </ChartCard>
+    {bloque && <SincProponer puedeAutorizar={autoriza} onClose={() => setBloque(false)} onDone={() => { setSelSinc(new Set()); sinc.reload() }}
+      ots={[...selSinc].map(ot => { const c = all.find(x => x.ot === ot); return { ot, cliente: c?.cliente, kg: c?.stock_kg ?? 0 } })} />}
     {lotesDe && <StockLotesModal {...lotesDe} cliente={opts.cliente.get(lotesDe.ot)} alms={alms} onClose={() => setLotesDe(null)} onFicha={() => { setLotesDe(null); onOpen(lotesDe.ot) }} />}
   </>
 }
