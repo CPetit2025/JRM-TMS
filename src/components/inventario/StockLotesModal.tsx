@@ -67,7 +67,7 @@ export function StockLotesModal({ ot, cliente, producto, alms, onClose, onFicha 
     <Modal isOpen onClose={onClose} title={`Stock disponible · OT ${ot}`} maxWidth="max-w-[min(96vw,1400px)]"
       footer={<div className="flex flex-wrap justify-between gap-2">
         <div className="flex flex-wrap gap-2"><button type="button" onClick={onFicha} className="min-h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-[#002855]">Ver ficha de la OT</button>
-          {puede && <button type="button" onClick={() => setProponer(true)} disabled={!elegidas.length} title="Marque los lotes que físicamente no existen" className="min-h-9 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-[#cf152d] disabled:opacity-50">Proponer sinceramiento{elegidas.length ? ` (${elegidas.length})` : ''}</button>}</div>
+          {puede && <button type="button" onClick={() => setProponer(true)} disabled={!elegidas.length} title="Marque los lotes que físicamente no existen" className="min-h-9 rounded-lg border border-red-300 bg-white px-4 text-sm font-semibold text-[#cf152d] disabled:opacity-50">{sinc.data?.puede_autorizar ? 'Sincerar a SF' : 'Proponer sinceramiento'}{elegidas.length ? ` (${elegidas.length})` : ''}</button>}</div>
         <button type="button" onClick={() => setReporte(true)} disabled={!filas.length} className="flex min-h-9 items-center gap-2 rounded-lg bg-[#002855] px-4 text-sm font-semibold text-white disabled:opacity-50"><Printer className="h-4 w-4" aria-hidden /> Reporte (vista previa)</button>
       </div>}>
       <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -95,7 +95,7 @@ export function StockLotesModal({ ot, cliente, producto, alms, onClose, onFicha 
             <td className={td}><DiasPill dias={f.dias_bodega} /></td>
           </tr>)}
         </Table>}
-      {proponer && <SincProponer ot={ot} cliente={cliente} filas={elegidas} onClose={() => setProponer(false)} onDone={() => { setSel(new Set()); sinc.reload() }} />}
+      {proponer && <SincProponer ot={ot} cliente={cliente} filas={elegidas} puedeAutorizar={!!sinc.data?.puede_autorizar} onClose={() => setProponer(false)} onDone={() => { setSel(new Set()); sinc.reload() }} />}
       {reporte && <ReporteStock filas={filas} meta={{ ot, cliente: cliente ?? null, corte: r.data?.corte ?? null, corteErp: li.data?.corte ?? null, filtros, generado: new Date() }} onClose={() => setReporte(false)} />}
     </Modal>
   )
