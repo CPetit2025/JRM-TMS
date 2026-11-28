@@ -94,6 +94,9 @@ function Lista({ onOpen }: { onOpen: (q: string) => void }) {
   const estServ = alms.length || estado === 'sincerar' ? '' : estado
   const pq = useInvQuery(ver === 'producto' ? `contratos_producto|${estServ}` : 'contratos_producto|off',
     () => ver === 'producto' ? invApi.contratosProducto(estServ) : Promise.resolve(null))
+  // Las filas elegidas se buscan en las filas cargadas: si cambian (otro estado o bodega), la selección se reinicia
+  const [selDe, setSelDe] = useState(pq.data)
+  if (selDe !== pq.data) { setSelDe(pq.data); if (ver === 'producto') setSelSinc(new Set()) }
   const rows = useMemo(() => {
     const f = filtro.trim().toUpperCase()
     const base: Fila[] = (ver === 'producto' ? pq.data?.filas : q.data?.contratos) ?? []
