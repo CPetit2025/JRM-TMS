@@ -122,7 +122,9 @@ export interface InvContratoFila {
 }
 export interface InvContratos { corte: string | null; cache?: InvCacheInfo; contratos: InvContratoFila[] }
 // La misma fila desglosada por OT + producto (código y glosa)
-export type InvContratoProductoFila = Omit<InvContratoFila, 'productos'> & { producto: string; glosa: string | null; unidad: string | null }
+export type InvContratoProductoFila = Omit<InvContratoFila, 'productos'> & { producto: string; glosa: string | null; unidad: string | null
+  // Unidades por bodega (cachés anteriores no las traen: entonces se usa stock_qty)
+  stock_647_qty?: number; stock_540_qty?: number; stock_st_qty?: number }
 export interface InvContratosProducto { corte: string | null; cache?: InvCacheInfo; filas: InvContratoProductoFila[] }
 
 export interface InvAptResumen {
