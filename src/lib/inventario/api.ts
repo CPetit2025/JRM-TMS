@@ -37,7 +37,7 @@ export const invApi = {
   saveOculto: (p: { codigo: string; motivo?: string; ocultar: boolean }) => call<{ success: true; codigo: string }>('inv_ocultos_save', { p }),
   sinc: () => call<InvSincList>('inv_sinc_list'),
   // Una OT con sus lotes (lineas) o un bloque (ots: todo su stock del APT); directo = la Jefatura autoriza en el mismo paso
-  sincTransferir: (p: (InvSincPropuesta | { motivo: SincMotivo; observacion: string; ots: Array<{ ot: string; cliente?: string | null }> }) & { directo: boolean }) =>
+  sincTransferir: (p: (InvSincPropuesta | { motivo: SincMotivo; observacion: string; ots: Array<{ ot: string; cliente?: string | null; productos?: string[] }> }) & { directo: boolean }) =>
     call<InvSincTransferencia>('inv_sinc_transferir', { p }),
   sincDecidir: (p: { id: number; accion: 'autorizar' | 'rechazar' | 'anular' | 'revertir'; motivo?: string }) =>
     call<{ success: true; numero: string; estado: string }>('inv_sinc_decidir', { p }),

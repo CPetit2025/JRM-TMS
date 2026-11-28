@@ -51,6 +51,14 @@ BEGIN
   -- deja libre el stock para lo que sigue
   UPDATE public.inv_sinc SET estado = 'ANULADA' WHERE bloque = r->>'bloque';
 
+  -- T8: desde la vista por producto: de la OT 99949 solo el producto C249.B (5 und en 540), no la viga A
+  r := public.inv_sinc_transferir(jsonb_build_object('motivo', 'ERROR_DIGITACION', 'observacion', 'Solo el poste B C249',
+    'ots', jsonb_build_array(jsonb_build_object('ot', '99949', 'productos', jsonb_build_array('C249.B')))));
+  IF (r->>'success')::boolean AND jsonb_array_length(r->'actas') = 1
+     AND (SELECT string_agg(l.producto || ':' || l.cantidad::float8, ',') FROM public.inv_sinc_lineas l JOIN public.inv_sinc s ON s.id = l.sinc_id WHERE s.bloque = r->>'bloque') = 'C249.B:5'
+  THEN pass := pass + 1; ELSE fails := fails || ('T8 bloque por producto ' || r::text); END IF;
+  UPDATE public.inv_sinc SET estado = 'ANULADA' WHERE bloque = r->>'bloque';
+
   -- T2: el Analista no transfiere directo (no queda nada registrado)
   IF sin_ana THEN pass := pass + 1; ELSE
   r := public.inv_sinc_transferir(jsonb_build_object('motivo', 'MERMA_NO_UBICADO', 'observacion', 'Intento directo C249', 'directo', true,
@@ -131,7 +139,7 @@ BEGIN
   IF sf = 6 AND (SELECT bool_and(estado = 'AUTORIZADA' AND regularizado_at IS NULL) FROM public.inv_sinc WHERE id IN (ida, idb))
   THEN pass := pass + 1; ELSE fails := fails || ('T7 reevaluar regularizadas: SF ' || sf); END IF;
 
-  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C249 FAIL (%/7): %', pass, array_to_string(fails, ' | '); END IF;
-  RAISE EXCEPTION 'CAJA C249 PASS (7/7) sinceramiento en bloque: un acta por OT, directo de la Jefatura y regularización con el ERP (reevaluada) sin devolver el fantasma%', CASE WHEN sin_ana THEN ' (T2 omitida: sin Analista no autorizador)' ELSE '' END;
+  IF cardinality(fails) > 0 THEN RAISE EXCEPTION 'CAJA C249 FAIL (%/8): %', pass, array_to_string(fails, ' | '); END IF;
+  RAISE EXCEPTION 'CAJA C249 PASS (8/8) sinceramiento en bloque: un acta por OT, por producto elegido, directo de la Jefatura y regularización con el ERP (reevaluada) sin devolver el fantasma%', CASE WHEN sin_ana THEN ' (T2 omitida: sin Analista no autorizador)' ELSE '' END;
 END $test$;
 ROLLBACK;
